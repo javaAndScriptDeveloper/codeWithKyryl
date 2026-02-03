@@ -1,0 +1,101 @@
+/* Post Page Specific Styles */
+
+/* Override body font for post pages */
+body {
+    font-family: 'Inter', sans-serif;
+    font-size: 1.1rem;
+    line-height: 1.8;
+}
+
+/* Main Content */
+main {
+    max-width: 900px;
+    margin: 6.5rem auto 4rem;
+    padding: 1rem;
+}
+
+/* Post Wrapper */
+.post-wrapper {
+    background: var(--cyber-gray);
+    padding: 2.5rem 2rem;
+    border-radius: 12px;
+    box-shadow: 0 0 20px rgba(0, 255, 65, 0.1);
+}
+
+/* Post Title */
+.post-title {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 2.5rem;
+    color: var(--neon-green);
+    margin-bottom: 0.5rem;
+    text-shadow: 0 0 10px var(--neon-green);
+}
+
+/* Post Meta */
+.post-meta {
+    font-size: 0.95rem;
+    color: var(--text-muted);
+    margin-bottom: 2rem;
+    font-family: 'Rajdhani', sans-serif;
+}
+
+/* Post Content */
+.post-content h2,
+.post-content h3 {
+    font-family: 'Rajdhani', sans-serif;
+    color: var(--neon-green);
+    margin-top: 2rem;
+    text-shadow: 0 0 4px var(--neon-green);
+}
+
+.post-content p {
+    margin-bottom: 1.5rem;
+    color: var(--text-bright);
+    font-size: 1.05rem;
+    line-height: 1.8;
+}
+
+.post-content a {
+    color: var(--accent-blue);
+    text-decoration: underline;
+}
+
+.post-content code {
+    background: #111;
+    padding: 0.2rem 0.4rem;
+    border-radius: 4px;
+    font-family: monospace;
+    color: var(--neon-green);
+}
+
+.post-content pre {
+    background: #111;
+    padding: 1rem;
+    overflow-x: auto;
+    border-left: 4px solid var(--neon-green);
+    margin: 2rem 0;
+    font-size: 0.95rem;
+    line-height: 1.6;
+}
+
+.post-tag {
+    background: linear-gradient(135deg, var(--neon-green), var(--dark-green));
+    color: var(--cyber-dark);
+    padding: 0.3rem 0.8rem;
+    border-radius: 15px;
+    font-weight: 600;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+/* Footer Override for Post Pages */
+footer {
+    text-align: center;
+    color: var(--neon-green);
+    padding: 3rem 1rem 2rem;
+    border-top: 1px solid var(--neon-green);
+    font-family: 'Orbitron', monospace;
+    font-size: 0.95rem;
+    text-shadow: 0 0 5px var(--neon-green);
+}

@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% if page.title %}{{ page.title }} | {% endif %}{{ site.title | default: "CodeWithKyryl" }}</title>
+
+    <!-- SEO Meta Tags -->
+    {% seo %}
+
+    <!-- Fonts & Icons -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Base CSS -->
+    <link rel="stylesheet" href="{{ '/assets/css/shared.css' | relative_url }}">
+
+    <!-- Page-specific CSS -->
+    {% for css in page.css %}
+    <link rel="stylesheet" href="{{ css | relative_url }}">
+    {% endfor %}
+
+    <!-- Layout-specific CSS -->
+    {% if layout.css %}
+    {% for css in layout.css %}
+    <link rel="stylesheet" href="{{ css | relative_url }}">
+    {% endfor %}
+    {% endif %}
+</head>
+<body>
+<!-- Cyberpunk Background -->
+<div class="cyber-bg"></div>
+
+<!-- Header -->
+{% include header.html %}
+
+<!-- Main Content -->
+<main>
+    {{ content }}
+</main>
+
+<!-- Footer -->
+{% include footer.html %}
+
+<!-- Page-specific JavaScript -->
+{% for js in page.js %}
+<script src="{{ js | relative_url }}"></script>
+{% endfor %}
+
+<!-- Layout-specific JavaScript -->
+{% if layout.js %}
+{% for js in layout.js %}
+<script src="{{ js | relative_url }}"></script>
+{% endfor %}
+{% endif %}
+</body>
+</html>

@@ -1,0 +1,39 @@
+<header>
+    <nav class="container">
+        <a href="{{ '/' | relative_url }}" class="logo">
+            <i class="fas fa-code"></i>
+            <span>CodeWithKyryl</span>
+        </a>
+        <button class="nav-toggle" aria-label="Toggle navigation" aria-expanded="false">
+            <span class="hamburger"></span>
+        </button>
+        <ul class="nav-links">
+            <li><a href="{{ '/' | relative_url }}">Home</a></li>
+            <li><a href="{{ '/tutorials' | relative_url }}">Tutorials</a></li>
+            <li><a href="{{ '/#about' | relative_url }}">About</a></li>
+        </ul>
+    </nav>
+</header>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const navToggle = document.querySelector('.nav-toggle');
+    const navLinks = document.querySelector('.nav-links');
+
+    navToggle.addEventListener('click', function() {
+        const isExpanded = navToggle.getAttribute('aria-expanded') === 'true';
+        navToggle.setAttribute('aria-expanded', !isExpanded);
+        navLinks.classList.toggle('nav-open');
+        navToggle.classList.toggle('nav-active');
+    });
+
+    // Close menu when clicking a link
+    navLinks.querySelectorAll('a').forEach(link => {
+        link.addEventListener('click', () => {
+            navLinks.classList.remove('nav-open');
+            navToggle.classList.remove('nav-active');
+            navToggle.setAttribute('aria-expanded', 'false');
+        });
+    });
+});
+</script>
