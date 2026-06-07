@@ -8,57 +8,7 @@ css:
     <div class="container">
         <div class="hero-content">
             <h1>CodeWithKyryl</h1>
-            <p class="hero-subtitle" style="color: #ffffff; font-size: 1.5rem; font-weight: 500;">
-                Dive deep into battle-tested strategies and hands-on tips for building resilient, high-load backends
-                with solid real-world development experience</p>
-            <div class="tech-grid">
-                <div class="tech-card">
-                    <div class="tech-icon spring-icon">
-                        <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/spring/spring-original.svg" alt="Spring Framework" style="width: 80px; height: 80px; filter: drop-shadow(0 0 6px #aaaaaa);">
-                    </div>
-                    <h3>Spring</h3>
-                    <p style="color: #ffffff; font-size: 1.1rem; font-weight: 500;">
-                        Crush complexity with clean, powerful Spring code
-                    </p>
-                </div>
-
-                <div class="tech-card">
-                    <div class="tech-icon kafka-icon">
-                        <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/apachekafka/apachekafka-original.svg" alt="Apache Kafka" style="width: 80px; height: 80px; filter: drop-shadow(0 0 6px #aaaaaa);">
-                    </div>
-                    <h3>Kafka</h3>
-                    <p style="color: #ffffff; font-size: 1.1rem; font-weight: 500;">
-                        From chaos to order — conquer event-driven systems</p>
-                </div>
-
-                <div class="tech-card">
-                    <div class="tech-icon postgres-icon">
-                        <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/postgresql/postgresql-original.svg" alt="PostgreSQL" style="width: 80px; height: 80px; filter: drop-shadow(0 0 6px #aaaaaa);">
-                    </div>
-                    <h3>Postgres</h3>
-                    <p style="color: #ffffff; font-size: 1.1rem; font-weight: 500;">
-                        Write queries that hit hard — every single time</p>
-                </div>
-
-                <div class="tech-card">
-                    <div class="tech-icon micro-icon">
-                        <i class="fas fa-cubes" style="color: #dddddd; text-shadow: 0 0 6px #aaaaaa;"></i>
-                    </div>
-                    <h3>Micro services</h3>
-                    <p style="color: #ffffff; font-size: 1.1rem; font-weight: 500;">
-                        Harmonized microservices — united to drive your success.</p>
-                </div>
-
-                <div class="tech-card">
-                    <div class="tech-icon devops-icon">
-                        <i class="fas fa-rocket"></i>
-                    </div>
-                    <h3>DevOps</h3>
-                    <p style="color: #ffffff; font-size: 1.1rem; font-weight: 500;">
-                        Turn your workflow into a seamless factory line of delivery.</p>
-                </div>
-
-            </div>
+            <p class="hero-subtitle">Writing about what actually breaks in prod.</p>
         </div>
     </div>
 </section>
@@ -90,11 +40,11 @@ css:
                     </div>
                     <h3><a href="{{ post.url | relative_url }}">{{ post.title }}</a></h3>
                     {% if post.excerpt %}
-                    <p class="post-excerpt" style="color: #ffffff; font-size: 1.1rem; font-weight: 500;">{{ post.excerpt | strip_html | truncatewords: 20 }}</p>
+                    <p class="post-excerpt">{{ post.excerpt | strip_html | truncatewords: 20 }}</p>
                     {% else %}
-                    <p class="post-excerpt" style="color: #ffffff; font-size: 1.1rem; font-weight: 500;">{{ post.content | strip_html | truncatewords: 20 }}</p>
+                    <p class="post-excerpt">{{ post.content | strip_html | truncatewords: 20 }}</p>
                     {% endif %}
-                    <a href="{{ post.url | relative_url }}" class="read-more subtle-cta">
+                    <a href="{{ post.url | relative_url }}" class="subtle-cta">
                       Continue Reading <i class="fas fa-arrow-right"></i>
                     </a>
                 </div>
@@ -102,7 +52,7 @@ css:
             {% endfor %}
             {% else %}
             <div class="no-posts">
-                <p>No transmissions detected yet. Check back soon for cyberpunk coding content!</p>
+                <p>No posts yet. Check back soon!</p>
             </div>
             {% endif %}
         </div>
@@ -111,18 +61,59 @@ css:
 
 <section class="about" id="about">
     <div class="container">
-        <h2>About the Digital Architect</h2>
+        <h2>About</h2>
         <div class="about-content">
-            <p style="color: #ffffff; font-size: 1.5rem; font-weight: 500;">
+            <p>
                 I'm <span class="about-highlight">Kyryl</span>, a Java developer with solid expertise in building resilient, high-load applications for modern backends.
             </p>
-            <p style="color: #ffffff; font-size: 1.5rem; font-weight: 500;">
+            <p>
                 I've worked extensively with <span class="about-highlight">Spring Boot applications</span>, architected scalable <span class="about-highlight">microservices architectures</span>, and streamlined software delivery through advanced <span class="about-highlight">DevOps automation</span>.
             </p>
-            <p style="color: #ffffff; font-size: 1.5rem; font-weight: 500;">
+            <p>
                 This blog shares practical insights into modern software architecture — from proven microservice patterns to efficient cloud-native deployment strategies. Join me as we dive into the real-world practice of enterprise Java development and DevOps excellence.
             </p>
         </div>
+    </div>
+</section>
 
+<section class="contact" id="contact">
+    <div class="container">
+        <h2 class="contact-title">Let's Connect</h2>
+        <p class="contact-subtitle">Got a question, topic idea, or just want to talk backend? I'm one message away.</p>
+        <div class="contact-links">
+            <a href="https://www.linkedin.com/in/{{ site.linkedin_username }}/" target="_blank" class="contact-card contact-card--linkedin">
+                <div class="contact-card-icon">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+                    </svg>
+                </div>
+                <div class="contact-card-body">
+                    <span class="contact-card-label">LinkedIn</span>
+                    <span class="contact-card-handle">kyryl-feshchenko</span>
+                </div>
+            </a>
+            <a href="https://t.me/{{ site.telegram_username }}" target="_blank" class="contact-card contact-card--telegram">
+                <div class="contact-card-icon">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/>
+                    </svg>
+                </div>
+                <div class="contact-card-body">
+                    <span class="contact-card-label">Telegram</span>
+                    <span class="contact-card-handle">@notatlast</span>
+                </div>
+            </a>
+            <a href="mailto:{{ site.email }}" class="contact-card contact-card--email">
+                <div class="contact-card-icon">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M24 5.457v13.909c0 .904-.732 1.636-1.636 1.636h-3.819V11.73L12 16.64l-6.545-4.91v9.273H1.636C.732 21.002 0 20.27 0 19.366V5.457c0-.904.732-1.636 1.636-1.636h3.819l6.545 4.91 6.545-4.91h3.819C23.268 3.821 24 4.553 24 5.457z"/>
+                    </svg>
+                </div>
+                <div class="contact-card-body">
+                    <span class="contact-card-label">Email</span>
+                    <span class="contact-card-handle">{{ site.email }}</span>
+                </div>
+            </a>
+        </div>
     </div>
 </section>

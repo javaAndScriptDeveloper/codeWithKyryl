@@ -1,6 +1,7 @@
 ---
 layout: default
 css:
+- /assets/css/syntax.css
 - /assets/css/post.css
 ---
 
@@ -15,5 +16,42 @@ css:
     </p>
     <div class="post-content">
         {{ content }}
+        <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+        <script>
+          mermaid.initialize({
+            startOnLoad: true,
+            theme: 'base',
+            themeVariables: {
+              primaryColor: '#e6f7f2',
+              primaryTextColor: '#1a1a1a',
+              primaryBorderColor: '#1D9E75',
+              lineColor: '#1D9E75',
+              secondaryColor: '#f0fdf8',
+              secondaryTextColor: '#1a1a1a',
+              secondaryBorderColor: '#0F6E56',
+              tertiaryColor: '#ffffff',
+              tertiaryTextColor: '#1a1a1a',
+              tertiaryBorderColor: '#e5e7eb',
+              noteBkgColor: '#e6f7f2',
+              noteTextColor: '#1a1a1a',
+              noteBorderColor: '#1D9E75',
+              actorBkg: '#e6f7f2',
+              actorBorder: '#1D9E75',
+              actorTextColor: '#1a1a1a',
+              signalColor: '#1D9E75',
+              signalTextColor: '#1a1a1a',
+              loopTextColor: '#1a1a1a',
+              labelBoxBkgColor: '#e6f7f2',
+              labelBoxBorderColor: '#1D9E75',
+              labelTextColor: '#1a1a1a'
+            }
+          });
+          document.querySelectorAll('pre code.language-mermaid').forEach(function(el) {
+            var div = document.createElement('div');
+            div.className = 'mermaid';
+            div.textContent = el.textContent;
+            el.parentNode.replaceWith(div);
+          });
+        </script>
     </div>
 </div>

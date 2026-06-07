@@ -24,26 +24,29 @@ description: >-
   Dive into the world of modern backend development with a focus on Spring Boot, Apache Kafka, PostgreSQL, CI/CD pipelines, and microservices architecture. Explore tutorials, guides, and deep dives tailored for developers building scalable, resilient, and production-ready systems.
 baseurl: "" # the subpath of your site, e.g. /blog
 url: "https://codewithkyryl.com" # the base hostname & protocol for your site
-twitter_username: code_w1th_me
-github_username:  javaAndScriptDeveloper
+linkedin_username: kyryl-feshchenko
+telegram_username: notatlast
 
 # Build settings
 theme: minima
+highlighter: rouge
 plugins:
   - jekyll-feed
   - jekyll-seo-tag
   - jekyll-sitemap
 
+collections:
+  articles:
+    output: true
+    permalink: /:year/:month/:day/:name/
+
 # SEO defaults
 author: Kyryl Feshchenko
-twitter:
-  username: code_w1th_me
-  card: summary_large_image
 
 defaults:
   - scope:
       path: ""
-      type: "posts"
+      type: "articles"
     values:
       author: Kyryl Feshchenko
 

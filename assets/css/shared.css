@@ -9,27 +9,28 @@
 
 /* CSS Variables */
 :root {
-    --neon-green: #00ff41;
-    --dark-green: #00cc33;
-    --cyber-dark: #0a0a0a;
-    --cyber-darker: #000000;
-    --cyber-gray: #1a1a1a;
-    --cyber-light: #2a2a2a;
-    --neon-blue: #00ffff;
-    --neon-pink: #ff00ff;
-    --neon-orange: #ff6600;
-    --grid-color: rgba(0, 255, 65, 0.1);
-    --text-bright: #cccccc;
-    --text-muted: rgba(0, 255, 65, 0.7);
-    --accent-blue: #007acc;
+    --color-primary: #1D9E75;
+    --color-primary-dark: #0F6E56;
+    --color-text-body: #1a1a1a;
+    --color-text-muted: #6b7280;
+    --color-bg-page: #FAFAF9;
+    --color-bg-card: #FFFFFF;
+    --color-bg-dark: #111827;
+    --color-code-bg: #1e1e2e;
+    --color-border: #e5e7eb;
+    --font-logo: 'JetBrains Mono', monospace;
+    --font-display: 'DM Sans', sans-serif;
+    --font-body: 'DM Sans', sans-serif;
+    --font-code: 'JetBrains Mono', monospace;
 }
 
 /* Body Base Styles */
 body {
-    font-family: 'Rajdhani', monospace;
-    line-height: 1.6;
-    color: var(--neon-green);
-    background: var(--cyber-dark);
+    font-family: var(--font-body);
+    font-size: 16px;
+    line-height: 1.75;
+    color: var(--color-text-body);
+    background: var(--color-bg-page);
     overflow-x: hidden;
 }
 
@@ -42,14 +43,13 @@ body {
 
 /* Header Styles */
 header {
-    background: rgba(10, 10, 10, 0.95);
+    background: rgba(255, 255, 255, 0.97);
     backdrop-filter: blur(10px);
     position: fixed;
     top: 0;
     width: 100%;
     z-index: 1000;
-    border-bottom: 2px solid var(--neon-green);
-    box-shadow: 0 0 20px rgba(0, 255, 65, 0.3);
+    border-bottom: 1px solid var(--color-border);
 }
 
 nav {
@@ -60,20 +60,19 @@ nav {
 }
 
 .logo {
-    font-family: 'Orbitron', monospace;
-    font-size: 1.8rem;
-    font-weight: 900;
-    color: var(--neon-green);
+    font-family: var(--font-logo);
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--color-primary);
     text-decoration: none;
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    text-shadow: 0 0 10px var(--neon-green);
-    transition: all 0.3s ease;
+    transition: color 0.2s ease;
 }
 
 .logo:hover {
-    text-shadow: 0 0 20px var(--neon-green), 0 0 30px var(--neon-green);
+    color: var(--color-primary-dark);
 }
 
 .nav-links {
@@ -84,26 +83,25 @@ nav {
 
 .nav-links a {
     text-decoration: none;
-    color: var(--neon-blue);
-    font-weight: 600;
-    font-size: 1.1rem;
-    transition: all 0.3s ease;
+    color: var(--color-text-muted);
+    font-family: var(--font-body);
+    font-weight: 500;
+    font-size: 0.9rem;
+    transition: color 0.2s ease;
     position: relative;
     text-transform: uppercase;
-    letter-spacing: 1px;
-    text-shadow: 0 0 10px var(--neon-blue);
+    letter-spacing: 0.5px;
 }
 
 .nav-links a::after {
     content: '';
     position: absolute;
-    bottom: -5px;
+    bottom: -4px;
     left: 0;
     width: 0;
     height: 2px;
-    background: var(--neon-blue);
-    transition: width 0.3s ease;
-    box-shadow: 0 0 5px var(--neon-blue);
+    background: var(--color-primary);
+    transition: width 0.2s ease;
 }
 
 .nav-links a:hover::after {
@@ -111,199 +109,115 @@ nav {
 }
 
 .nav-links a:hover {
-    text-shadow: 0 0 10px var(--neon-blue);
+    color: var(--color-primary);
 }
 
-/* CALL-TO-ACTION BUTTON STYLES */
+.nav-links a.active {
+    color: var(--color-primary);
+}
 
-/* Primary CTA Button */
+.nav-links a.active::after {
+    width: 100%;
+}
+
+/* Button Styles */
 .btn-primary, .btn-cta {
     display: inline-block;
-    padding: 16px 32px;
-    font-family: 'Orbitron', monospace;
-    font-size: 1.1rem;
-    font-weight: 700;
+    padding: 12px 28px;
+    font-family: var(--font-display);
+    font-size: 0.95rem;
+    font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 2px;
+    letter-spacing: 1px;
     text-decoration: none;
-    color: var(--cyber-dark);
-    background: linear-gradient(45deg, var(--neon-green), var(--dark-green));
-    border: 2px solid var(--neon-green);
-    border-radius: 0;
-    position: relative;
-    overflow: hidden;
+    color: #ffffff;
+    background: var(--color-primary);
+    border: 2px solid var(--color-primary);
+    border-radius: 6px;
     cursor: pointer;
-    transition: all 0.3s ease;
-    box-shadow:
-            0 0 20px rgba(0, 255, 65, 0.5),
-            inset 0 0 20px rgba(0, 255, 65, 0.1);
-    z-index: 1;
-}
-
-.btn-primary::before, .btn-cta::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: -100%;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
-    transition: left 0.5s ease;
-    z-index: 2;
-}
-
-.btn-primary:hover::before, .btn-cta:hover::before {
-    left: 100%;
+    transition: all 0.2s ease;
 }
 
 .btn-primary:hover, .btn-cta:hover {
-    transform: translateY(-2px);
-    box-shadow:
-            0 0 30px rgba(0, 255, 65, 0.8),
-            0 5px 20px rgba(0, 255, 65, 0.4),
-            inset 0 0 30px rgba(0, 255, 65, 0.2);
-    background: linear-gradient(45deg, var(--dark-green), var(--neon-green));
+    background: var(--color-primary-dark);
+    border-color: var(--color-primary-dark);
+    transform: translateY(-1px);
 }
 
 .btn-primary:active, .btn-cta:active {
     transform: translateY(0);
-    box-shadow:
-            0 0 15px rgba(0, 255, 65, 0.6),
-            inset 0 0 15px rgba(0, 255, 65, 0.3);
 }
 
 /* Secondary CTA Button */
 .btn-secondary {
     display: inline-block;
-    padding: 14px 28px;
-    font-family: 'Orbitron', monospace;
-    font-size: 1rem;
+    padding: 12px 28px;
+    font-family: var(--font-display);
+    font-size: 0.95rem;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 1.5px;
+    letter-spacing: 1px;
     text-decoration: none;
-    color: var(--neon-green);
+    color: var(--color-primary);
     background: transparent;
-    border: 2px solid var(--neon-green);
-    border-radius: 0;
-    position: relative;
-    overflow: hidden;
+    border: 2px solid var(--color-primary);
+    border-radius: 6px;
     cursor: pointer;
-    transition: all 0.3s ease;
-    box-shadow: 0 0 15px rgba(0, 255, 65, 0.3);
-}
-
-.btn-secondary::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 0;
-    height: 100%;
-    background: var(--neon-green);
-    transition: width 0.3s ease;
-    z-index: -1;
-}
-
-.btn-secondary:hover::after {
-    width: 100%;
+    transition: all 0.2s ease;
 }
 
 .btn-secondary:hover {
-    color: var(--cyber-dark);
-    transform: translateY(-2px);
-    box-shadow:
-            0 0 25px rgba(0, 255, 65, 0.6),
-            0 5px 15px rgba(0, 255, 65, 0.3);
+    background: var(--color-primary);
+    color: #ffffff;
+    transform: translateY(-1px);
 }
 
-/* Danger/Alert CTA Button */
+/* Danger Button */
 .btn-danger {
     display: inline-block;
-    padding: 16px 32px;
-    font-family: 'Orbitron', monospace;
-    font-size: 1.1rem;
+    padding: 12px 28px;
+    font-family: var(--font-display);
+    font-size: 0.95rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    text-decoration: none;
+    color: #ffffff;
+    background: #dc2626;
+    border: 2px solid #dc2626;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-danger:hover {
+    background: #b91c1c;
+    border-color: #b91c1c;
+    transform: translateY(-1px);
+}
+
+/* Special Button */
+.btn-special {
+    display: inline-block;
+    padding: 14px 32px;
+    font-family: var(--font-display);
+    font-size: 1rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 2px;
     text-decoration: none;
-    color: var(--cyber-dark);
-    background: linear-gradient(45deg, var(--neon-orange), #ff4400);
-    border: 2px solid var(--neon-orange);
-    border-radius: 0;
-    position: relative;
-    overflow: hidden;
+    color: #ffffff;
+    background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark));
+    border: none;
+    border-radius: 6px;
     cursor: pointer;
     transition: all 0.3s ease;
-    box-shadow:
-            0 0 20px rgba(255, 102, 0, 0.5),
-            inset 0 0 20px rgba(255, 102, 0, 0.1);
-    animation: pulse-danger 2s infinite;
-}
-
-@keyframes pulse-danger {
-    0%, 100% {
-        box-shadow: 0 0 20px rgba(255, 102, 0, 0.5), inset 0 0 20px rgba(255, 102, 0, 0.1);
-    }
-    50% {
-        box-shadow: 0 0 30px rgba(255, 102, 0, 0.8), inset 0 0 30px rgba(255, 102, 0, 0.2);
-    }
-}
-
-.btn-danger:hover {
-    transform: translateY(-2px);
-    box-shadow:
-            0 0 35px rgba(255, 102, 0, 0.9),
-            0 5px 20px rgba(255, 102, 0, 0.4);
-    animation: none;
-}
-
-/* Special Action Button */
-.btn-special {
-    display: inline-block;
-    padding: 18px 36px;
-    font-family: 'Orbitron', monospace;
-    font-size: 1.2rem;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 3px;
-    text-decoration: none;
-    color: var(--cyber-dark);
-    background: linear-gradient(45deg, var(--neon-blue), var(--neon-pink));
-    border: 3px solid transparent;
-    border-radius: 0;
-    position: relative;
-    overflow: hidden;
-    cursor: pointer;
-    transition: all 0.4s ease;
-    box-shadow:
-            0 0 25px rgba(0, 255, 255, 0.4),
-            0 0 25px rgba(255, 0, 255, 0.4);
-    animation: rainbow-glow 3s infinite;
-}
-
-@keyframes rainbow-glow {
-    0% {
-        box-shadow: 0 0 25px rgba(0, 255, 255, 0.6), 0 0 25px rgba(255, 0, 255, 0.6);
-    }
-    33% {
-        box-shadow: 0 0 25px rgba(0, 255, 65, 0.6), 0 0 25px rgba(255, 102, 0, 0.6);
-    }
-    66% {
-        box-shadow: 0 0 25px rgba(255, 0, 255, 0.6), 0 0 25px rgba(0, 255, 255, 0.6);
-    }
-    100% {
-        box-shadow: 0 0 25px rgba(0, 255, 255, 0.6), 0 0 25px rgba(255, 0, 255, 0.6);
-    }
+    box-shadow: 0 4px 15px rgba(29, 158, 117, 0.3);
 }
 
 .btn-special:hover {
-    transform: translateY(-3px) scale(1.05);
-    animation: none;
-    box-shadow:
-            0 0 40px rgba(0, 255, 255, 0.8),
-            0 0 40px rgba(255, 0, 255, 0.8),
-            0 10px 30px rgba(0, 255, 255, 0.3);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(29, 158, 117, 0.4);
 }
 
 /* Button Group */
@@ -317,15 +231,13 @@ nav {
 
 /* Button Sizes */
 .btn-small {
-    padding: 10px 20px;
-    font-size: 0.9rem;
-    letter-spacing: 1px;
+    padding: 8px 18px;
+    font-size: 0.85rem;
 }
 
 .btn-large {
-    padding: 20px 40px;
-    font-size: 1.3rem;
-    letter-spacing: 3px;
+    padding: 16px 36px;
+    font-size: 1.05rem;
 }
 
 /* Disabled Button */
@@ -337,54 +249,33 @@ nav {
 
 /* Footer Styles */
 footer {
-    background: var(--cyber-darker);
-    color: var(--neon-green);
-    padding: 4rem 0;
-    border-top: 2px solid var(--neon-green);
+    background: var(--color-bg-card);
+    color: var(--color-text-muted);
+    padding: 2rem 0;
+    border-top: 1px solid var(--color-border);
     position: relative;
-    text-align: center;
 }
 
 .footer-content {
-    margin-bottom: 2rem;
-}
-
-.footer-section h4 {
-    font-family: 'Orbitron', monospace;
-    margin-bottom: 1rem;
-    font-size: 1.4rem;
-    color: var(--neon-green);
-    text-shadow: 0 0 10px var(--neon-green);
-}
-
-.footer-section ul {
-    list-style: none;
     display: flex;
-    justify-content: center;
-    gap: 2rem;
+    justify-content: space-between;
+    align-items: center;
     flex-wrap: wrap;
+    gap: 1rem;
 }
 
-.footer-section ul li a {
-    color: #cccccc;
-    text-decoration: none;
-    transition: all 0.3s ease;
-    font-size: 1.1rem;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-}
-
-.footer-section ul li a:hover {
-    color: var(--neon-green);
-    text-shadow: 0 0 5px var(--neon-green);
+.footer-tagline {
+    font-family: var(--font-body);
+    font-size: 0.9rem;
+    color: var(--color-text-muted);
+    margin: 0;
 }
 
 .footer-bottom {
     text-align: center;
-    padding-top: 2rem;
-    font-family: 'Orbitron', monospace;
-    font-size: 1.1rem;
-    color: var(--neon-green);
+    font-family: var(--font-body);
+    font-size: 0.9rem;
+    color: var(--color-text-muted);
 }
 
 /* Scrollbar */
@@ -393,36 +284,36 @@ footer {
 }
 
 ::-webkit-scrollbar-track {
-    background: var(--cyber-dark);
+    background: var(--color-bg-page);
 }
 
 ::-webkit-scrollbar-thumb {
-    background: var(--neon-green);
+    background: var(--color-border);
     border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background: var(--dark-green);
+    background: var(--color-primary);
 }
 
 /* Mobile Navigation Toggle */
 .nav-toggle {
     display: none;
     background: transparent;
-    border: 2px solid var(--neon-green);
+    border: 1px solid var(--color-border);
     padding: 8px;
     cursor: pointer;
     z-index: 1001;
+    border-radius: 4px;
 }
 
 .hamburger {
     display: block;
     width: 24px;
     height: 2px;
-    background: var(--neon-green);
+    background: var(--color-text-muted);
     position: relative;
     transition: all 0.3s ease;
-    box-shadow: 0 0 5px var(--neon-green);
 }
 
 .hamburger::before,
@@ -431,10 +322,9 @@ footer {
     position: absolute;
     width: 24px;
     height: 2px;
-    background: var(--neon-green);
+    background: var(--color-text-muted);
     left: 0;
     transition: all 0.3s ease;
-    box-shadow: 0 0 5px var(--neon-green);
 }
 
 .hamburger::before {
@@ -448,7 +338,6 @@ footer {
 /* Hamburger animation when active */
 .nav-toggle.nav-active .hamburger {
     background: transparent;
-    box-shadow: none;
 }
 
 .nav-toggle.nav-active .hamburger::before {
@@ -477,11 +366,11 @@ footer {
         top: 100%;
         left: 0;
         right: 0;
-        background: rgba(10, 10, 10, 0.98);
+        background: rgba(255, 255, 255, 0.98);
         flex-direction: column;
         padding: 1rem 0;
-        border-bottom: 2px solid var(--neon-green);
-        box-shadow: 0 10px 30px rgba(0, 255, 65, 0.2);
+        border-bottom: 1px solid var(--color-border);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
     }
 
     .nav-links.nav-open {
@@ -494,15 +383,16 @@ footer {
     }
 
     .nav-links a {
-        font-size: 1.2rem;
+        font-size: 1rem;
     }
 
     .logo {
-        font-size: 1.5rem;
+        font-size: 1.3rem;
     }
 
-    .footer-section ul {
+    .footer-content {
         flex-direction: column;
+        align-items: flex-start;
         gap: 1rem;
     }
 
@@ -515,78 +405,57 @@ footer {
         text-align: center;
         width: 100%;
     }
-
-    .btn-large {
-        padding: 16px 32px;
-        font-size: 1.1rem;
-    }
 }
 
 @media (max-width: 480px) {
     .logo {
-        font-size: 1.5rem;
-    }
-
-    .btn-primary, .btn-cta, .btn-secondary, .btn-danger, .btn-special {
-        padding: 14px 24px;
-        font-size: 1rem;
-        letter-spacing: 1px;
-    }
-
-    .btn-special {
-        letter-spacing: 2px;
+        font-size: 1.2rem;
     }
 }
 
+/* Shared post-image used in home card header */
 .post-image {
     display: flex;
     align-items: center;
     justify-content: center;
     height: 80px;
-    background: linear-gradient(135deg, var(--cyber-gray), var(--cyber-light));
-    border-bottom: 1px solid rgba(0, 255, 65, 0.3);
+    background: linear-gradient(135deg, #f0fdf9, #e6f7f2);
+    border-bottom: 1px solid var(--color-border);
 }
 
 .post-image i {
     font-size: 2rem;
-    color: var(--neon-green);
-    text-shadow: 0 0 10px var(--neon-green);
-}
-
-.footer-bottom {
-    text-align: center;
-}
-
-.footer-bottom p {
-    margin: 0 0 10px 0;
-    font-weight: bold;
-    color: #333;
-}
-
-.contact-box {
-    background-color: var(--cyber-gray);
-    border: 2px solid var(--neon-green); /* Added border width */
-    border-radius: 8px;
-    padding: 10px;
-    display: inline-block; /* Makes the box size fit its content */
+    color: var(--color-primary);
 }
 
 .contact-icons {
     display: flex;
-    gap: 25px; /* Increased gap between icons */
+    gap: 20px;
+    align-items: center;
 }
 
 .contact-icons a {
-    color: var(--neon-blue); /* Neon blue color */
+    color: var(--color-text-muted);
     text-decoration: none;
-    transition: all 0.3s ease;
+    transition: color 0.2s ease;
+    display: flex;
+    align-items: center;
 }
 
 .contact-icons a:hover {
-    color: #0080ff;
-    filter: drop-shadow(0 0 8px #00bfff); /* Neon glow effect on hover */
+    color: var(--color-primary);
 }
 
 .contact-icons svg {
     vertical-align: middle;
 }
+
+.mermaid-bordered .node rect,
+.mermaid-bordered .node circle,
+.mermaid-bordered .node ellipse,
+.mermaid-bordered .node polygon {
+  stroke: #1D9E75 !important;
+  stroke-width: 2px !important;
+}
+
+pre { position: relative; }

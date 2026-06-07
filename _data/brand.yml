@@ -1,0 +1,4 @@
+site_name: "CodeWithKyryl"
+tagline: "Battle-tested strategies for resilient, high-load backends."
+author: "Kyryl Feshchenko"
+stack: "Java · Spring Boot · PostgreSQL"

@@ -1,101 +1,103 @@
 /* Post Page Specific Styles */
 
-/* Override body font for post pages */
 body {
-    font-family: 'Inter', sans-serif;
-    font-size: 1.1rem;
+    font-family: var(--font-body);
+    font-size: 1.05rem;
     line-height: 1.8;
+    color: var(--color-text-body);
+    background: var(--color-bg-page);
 }
 
-/* Main Content */
 main {
     max-width: 900px;
     margin: 6.5rem auto 4rem;
     padding: 1rem;
 }
 
-/* Post Wrapper */
 .post-wrapper {
-    background: var(--cyber-gray);
+    background: var(--color-bg-card);
     padding: 2.5rem 2rem;
     border-radius: 12px;
-    box-shadow: 0 0 20px rgba(0, 255, 65, 0.1);
+    border: 1px solid var(--color-border);
 }
 
-/* Post Title */
 .post-title {
-    font-family: 'Rajdhani', sans-serif;
-    font-size: 2.5rem;
-    color: var(--neon-green);
+    font-family: var(--font-display);
+    font-size: 2.25rem;
+    color: var(--color-text-body);
     margin-bottom: 0.5rem;
-    text-shadow: 0 0 10px var(--neon-green);
+    line-height: 1.3;
 }
 
-/* Post Meta */
 .post-meta {
-    font-size: 0.95rem;
-    color: var(--text-muted);
+    font-size: 0.9rem;
+    color: var(--color-text-muted);
     margin-bottom: 2rem;
-    font-family: 'Rajdhani', sans-serif;
+    font-family: var(--font-body);
 }
 
-/* Post Content */
 .post-content h2,
 .post-content h3 {
-    font-family: 'Rajdhani', sans-serif;
-    color: var(--neon-green);
+    font-family: var(--font-display);
+    color: var(--color-text-body);
     margin-top: 2rem;
-    text-shadow: 0 0 4px var(--neon-green);
+    margin-bottom: 0.75rem;
 }
 
 .post-content p {
     margin-bottom: 1.5rem;
-    color: var(--text-bright);
-    font-size: 1.05rem;
+    color: var(--color-text-body);
+    font-size: 1rem;
     line-height: 1.8;
 }
 
 .post-content a {
-    color: var(--accent-blue);
+    color: var(--color-primary);
     text-decoration: underline;
 }
 
-.post-content code {
-    background: #111;
-    padding: 0.2rem 0.4rem;
+code:not(pre code) {
+    background: #e6f7f2;
+    color: #0F6E56;
     border-radius: 4px;
-    font-family: monospace;
-    color: var(--neon-green);
+    padding: 2px 6px;
+    font-size: 0.875em;
+    font-family: var(--font-code);
 }
 
 .post-content pre {
-    background: #111;
-    padding: 1rem;
+    background: var(--color-code-bg);
+    padding: 1.25rem 1.5rem;
     overflow-x: auto;
-    border-left: 4px solid var(--neon-green);
-    margin: 2rem 0;
-    font-size: 0.95rem;
-    line-height: 1.6;
+    border-left: 3px solid var(--color-primary);
+    border-radius: 0 6px 6px 0;
+    margin: 1.75rem 0;
+    font-size: 14px;
+    line-height: 1.7;
+    font-family: var(--font-code);
+}
+
+.post-content pre code {
+    background: transparent;
+    padding: 0;
+    color: inherit;
+}
+
+.post-content div.highlight {
+    background: transparent;
 }
 
 .post-tag {
-    background: linear-gradient(135deg, var(--neon-green), var(--dark-green));
-    color: var(--cyber-dark);
-    padding: 0.3rem 0.8rem;
-    border-radius: 15px;
+    background: #e6f7f2;
+    color: var(--color-primary-dark);
+    padding: 0.25rem 0.7rem;
+    border-radius: 20px;
     font-weight: 600;
-    font-size: 0.8rem;
+    font-size: 0.75rem;
     text-transform: uppercase;
-    letter-spacing: 1px;
+    letter-spacing: 0.5px;
 }
 
-/* Footer Override for Post Pages */
 footer {
-    text-align: center;
-    color: var(--neon-green);
-    padding: 3rem 1rem 2rem;
-    border-top: 1px solid var(--neon-green);
-    font-family: 'Orbitron', monospace;
-    font-size: 0.95rem;
-    text-shadow: 0 0 5px var(--neon-green);
+    border-top: 1px solid var(--color-border);
 }

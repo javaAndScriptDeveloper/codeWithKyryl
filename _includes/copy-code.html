@@ -1,0 +1,35 @@
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('pre').forEach(function (pre) {
+      var btn = document.createElement('button');
+      btn.textContent = 'Copy';
+      btn.style.cssText = [
+        'position:absolute',
+        'top:8px',
+        'right:8px',
+        'background:#1D9E75',
+        'color:#ffffff',
+        'border:none',
+        'border-radius:4px',
+        'padding:3px 10px',
+        'font-size:11px',
+        'cursor:pointer',
+        'opacity:0',
+        'transition:opacity 0.15s'
+      ].join(';');
+
+      pre.addEventListener('mouseenter', function () { btn.style.opacity = '1'; });
+      pre.addEventListener('mouseleave', function () { btn.style.opacity = '0'; });
+
+      btn.addEventListener('click', function () {
+        var text = pre.querySelector('code') ? pre.querySelector('code').innerText : pre.innerText;
+        navigator.clipboard.writeText(text).then(function () {
+          btn.textContent = 'Copied!';
+          setTimeout(function () { btn.textContent = 'Copy'; }, 1500);
+        });
+      });
+
+      pre.appendChild(btn);
+    });
+  });
+</script>

@@ -10,7 +10,7 @@
 
     <!-- Fonts & Icons -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 
     <!-- Base CSS -->
     <link rel="stylesheet" href="{{ '/assets/css/shared.css' | relative_url }}">
@@ -28,8 +28,6 @@
     {% endif %}
 </head>
 <body>
-<!-- Cyberpunk Background -->
-<div class="cyber-bg"></div>
 
 <!-- Header -->
 {% include header.html %}
@@ -53,5 +51,6 @@
 <script src="{{ js | relative_url }}"></script>
 {% endfor %}
 {% endif %}
+{% include copy-code.html %}
 </body>
 </html>

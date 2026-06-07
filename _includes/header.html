@@ -2,7 +2,7 @@
     <nav class="container">
         <a href="{{ '/' | relative_url }}" class="logo">
             <i class="fas fa-code"></i>
-            <span>CodeWithKyryl</span>
+            <span>{{ site.data.brand.site_name }}</span>
         </a>
         <button class="nav-toggle" aria-label="Toggle navigation" aria-expanded="false">
             <span class="hamburger"></span>
@@ -11,6 +11,7 @@
             <li><a href="{{ '/' | relative_url }}">Home</a></li>
             <li><a href="{{ '/tutorials' | relative_url }}">Tutorials</a></li>
             <li><a href="{{ '/#about' | relative_url }}">About</a></li>
+            <li><a href="{{ '/#contact' | relative_url }}">Contact</a></li>
         </ul>
     </nav>
 </header>
@@ -34,6 +35,13 @@ document.addEventListener('DOMContentLoaded', function() {
             navToggle.classList.remove('nav-active');
             navToggle.setAttribute('aria-expanded', 'false');
         });
+    });
+
+    // Mark active nav link
+    const currentPath = window.location.pathname.replace(/\/$/, '') || '/';
+    document.querySelectorAll('.nav-links a').forEach(link => {
+        const linkPath = link.pathname.replace(/\/$/, '') || '/';
+        if (linkPath === currentPath) link.classList.add('active');
     });
 });
 </script>

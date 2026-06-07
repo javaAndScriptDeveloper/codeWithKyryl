@@ -1,6 +1,5 @@
 /* Tutorials Page Specific Styles */
 
-/* Main Content */
 main {
     margin-top: 6rem;
     padding: 2rem 0;
@@ -9,31 +8,16 @@ main {
 /* Tutorials Header */
 .tutorials-header {
     padding: 100px 0 50px;
-    background: linear-gradient(135deg, rgba(0, 255, 65, 0.1), rgba(0, 255, 255, 0.1));
-    border-bottom: 2px solid var(--neon-green);
+    background: var(--color-bg-card);
+    border-bottom: 1px solid var(--color-border);
     position: relative;
 }
 
-.tutorials-header::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background:
-            linear-gradient(90deg, transparent 0%, var(--grid-color) 50%, transparent 100%),
-            linear-gradient(0deg, transparent 0%, var(--grid-color) 50%, transparent 100%);
-    background-size: 100px 100px;
-    opacity: 0.3;
-    pointer-events: none;
-}
-
 .section-title {
-    font-family: 'Orbitron', monospace;
-    font-size: 2.8rem;
-    color: var(--neon-green);
-    text-shadow: 0 0 20px var(--neon-green);
+    font-family: var(--font-display);
+    font-size: 2.5rem;
+    font-weight: 700;
+    color: var(--color-text-body);
     margin-bottom: 0.5rem;
     text-align: center;
     display: flex;
@@ -43,17 +27,17 @@ main {
 }
 
 .section-title i {
-    font-size: 2.5rem;
-    color: var(--neon-green);
+    font-size: 2rem;
+    color: var(--color-primary);
 }
 
 .tutorials-subtitle {
-    font-size: 1.2rem;
-    color: var(--text-muted);
-    margin-top: 15px;
-    font-family: 'Rajdhani', sans-serif;
+    font-size: 1rem;
+    color: var(--color-text-muted);
+    margin-top: 12px;
+    font-family: var(--font-body);
     text-align: center;
-    letter-spacing: 1px;
+    letter-spacing: 0.5px;
 }
 
 /* Tutorials Content */
@@ -62,19 +46,17 @@ main {
 }
 
 .tutorials-controls {
-    background: var(--cyber-gray);
-    border: 2px solid var(--neon-green);
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
     border-radius: 10px;
-    padding: 25px;
+    padding: 20px;
     margin-bottom: 40px;
-    backdrop-filter: blur(10px);
-    box-shadow: 0 0 20px rgba(0, 255, 65, 0.1);
 }
 
 .filter-controls {
     display: flex;
     flex-wrap: wrap;
-    gap: 20px;
+    gap: 16px;
     align-items: center;
 }
 
@@ -87,63 +69,59 @@ main {
 }
 
 .filter-btn {
-    background: var(--cyber-dark);
-    border: 1px solid var(--neon-blue);
-    color: var(--neon-blue);
-    padding: 8px 15px;
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    color: var(--color-text-muted);
+    padding: 7px 14px;
     border-radius: 20px;
     cursor: pointer;
-    transition: all 0.3s ease;
-    font-family: 'Rajdhani', sans-serif;
-    font-size: 14px;
+    transition: all 0.2s ease;
+    font-family: var(--font-body);
+    font-size: 0.85rem;
     font-weight: 500;
     display: flex;
     align-items: center;
-    gap: 5px;
+    gap: 4px;
     text-transform: uppercase;
-    letter-spacing: 1px;
+    letter-spacing: 0.5px;
 }
 
 .filter-btn:hover {
-    background: var(--neon-blue);
-    color: var(--cyber-dark);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 15px rgba(0, 255, 65, 0.3);
-    text-shadow: none;
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+    background: #f0fdf9;
 }
 
 .filter-btn.active {
-    background: var(--neon-blue);
-    color: var(--cyber-dark);
+    background: var(--color-primary);
+    border-color: var(--color-primary);
+    color: #ffffff;
     font-weight: 600;
-    text-shadow: none;
-    box-shadow: 0 0 10px var(--neon-blue);
 }
 
 /* Posts Grid */
 .posts-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-    gap: 30px;
+    gap: 24px;
     margin-bottom: 40px;
 }
 
 .post-card {
-    background: var(--cyber-gray);
-    border: 1px solid var(--neon-green);
-    border-radius: 10px;
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    border-left: 3px solid var(--color-primary);
+    border-radius: 0 10px 10px 0;
     overflow: hidden;
-    transition: all 0.3s ease;
-    backdrop-filter: blur(10px);
+    transition: all 0.25s ease;
     opacity: 1;
     transform: translateY(0);
 }
 
 .post-card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 10px 30px rgba(0, 255, 65, 0.2);
-    border-color: var(--neon-green);
-    border-width: 2px;
+    transform: translateY(-4px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+    border-color: var(--color-primary);
 }
 
 .post-card.hidden {
@@ -153,33 +131,18 @@ main {
 }
 
 .post-image {
-    height: 120px;
-    background: linear-gradient(135deg, rgba(0, 255, 65, 0.1), rgba(0, 255, 255, 0.1));
+    height: 100px;
+    background: linear-gradient(135deg, #f0fdf9, #e6f7f2);
     display: flex;
     align-items: center;
     justify-content: center;
-    border-bottom: 1px solid var(--neon-green);
+    border-bottom: 1px solid var(--color-border);
     position: relative;
 }
 
-.post-image::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background:
-            linear-gradient(90deg, transparent 0%, var(--grid-color) 50%, transparent 100%),
-            linear-gradient(0deg, transparent 0%, var(--grid-color) 50%, transparent 100%);
-    background-size: 20px 20px;
-    opacity: 0.3;
-}
-
 .post-image i {
-    font-size: 3rem;
-    color: var(--neon-green);
-    text-shadow: 0 0 10px var(--neon-green);
+    font-size: 2.5rem;
+    color: var(--color-primary);
     z-index: 1;
     position: relative;
 }
@@ -192,94 +155,96 @@ main {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 15px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+    gap: 6px;
 }
 
 .post-tag {
-    background: var(--neon-green);
-    color: var(--cyber-dark);
-    padding: 4px 12px;
-    border-radius: 15px;
-    font-size: 12px;
+    background: #e6f7f2;
+    color: var(--color-primary-dark);
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 1px;
-    box-shadow: 0 0 5px var(--neon-green);
+    letter-spacing: 0.5px;
 }
 
 .post-date {
-    color: var(--text-muted);
-    font-size: 14px;
-    font-family: 'Rajdhani', sans-serif;
+    color: var(--color-text-muted);
+    font-size: 13px;
+    font-family: var(--font-body);
     text-transform: uppercase;
-    letter-spacing: 1px;
+    letter-spacing: 0.5px;
 }
 
 .post-content h3 {
-    margin-bottom: 10px;
-    font-size: 1.3rem;
+    margin-bottom: 8px;
+    font-size: 1.15rem;
     font-weight: 600;
-    font-family: 'Rajdhani', sans-serif;
+    font-family: var(--font-display);
 }
 
 .post-content h3 a {
-    color: var(--neon-green);
+    color: var(--color-text-body);
     text-decoration: none;
-    transition: all 0.3s ease;
+    transition: color 0.2s ease;
 }
 
 .post-content h3 a:hover {
-    text-shadow: 0 0 10px var(--neon-green);
+    color: var(--color-primary);
 }
 
 .post-excerpt {
-    color: var(--text-bright);
-    line-height: 1.6;
-    margin-bottom: 15px;
-    font-size: 1rem;
+    color: var(--color-text-muted);
+    line-height: 1.65;
+    margin-bottom: 14px;
+    font-size: 0.92rem;
+    font-family: var(--font-body);
 }
 
 .post-tags {
     display: flex;
     flex-wrap: wrap;
     gap: 5px;
-    margin-bottom: 15px;
+    margin-bottom: 14px;
 }
 
 .tag-chip {
-    background: linear-gradient(135deg, var(--neon-green), var(--dark-green));
-    color: var(--cyber-dark);
-    padding: 0.3rem 0.8rem;
-    border-radius: 15px;
+    background: #e6f7f2;
+    color: var(--color-primary-dark);
+    padding: 0.2rem 0.65rem;
+    border-radius: 20px;
     font-weight: 600;
-    font-size: 0.8rem;
+    font-size: 0.75rem;
     text-transform: uppercase;
-    letter-spacing: 1px;
+    letter-spacing: 0.5px;
 }
 
 .read-more {
-    color: var(--neon-blue);
+    color: var(--color-primary);
     text-decoration: none;
-    font-weight: 600;
-    font-family: 'Rajdhani', sans-serif;
-    text-transform: uppercase;
-    letter-spacing: 1px;
+    font-weight: 500;
+    font-family: var(--font-body);
+    font-size: 0.85rem;
     display: inline-flex;
     align-items: center;
-    gap: 0.5rem;
-    transition: all 0.3s ease;
+    gap: 0.4rem;
+    transition: color 0.2s ease, gap 0.2s ease;
 }
 
 .read-more:hover {
-    text-shadow: 0 0 10px var(--neon-blue);
+    color: var(--color-primary-dark);
+    gap: 0.6rem;
 }
 
 .read-more i {
-    transition: transform 0.3s ease;
+    transition: transform 0.2s ease;
 }
 
 .read-more:hover i {
-    transform: translateX(5px);
+    transform: translateX(3px);
 }
 
 /* Pagination */
@@ -290,101 +255,97 @@ main {
 .pagination {
     display: flex;
     justify-content: center;
-    gap: 10px;
-    margin-bottom: 20px;
+    gap: 8px;
+    margin-bottom: 16px;
 }
 
 .pagination button {
-    background: var(--cyber-dark);
-    border: 1px solid var(--neon-green);
-    color: var(--neon-green);
-    padding: 10px 15px;
-    border-radius: 5px;
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    color: var(--color-text-muted);
+    padding: 9px 14px;
+    border-radius: 6px;
     cursor: pointer;
-    transition: all 0.3s ease;
-    font-family: 'Rajdhani', sans-serif;
+    transition: all 0.2s ease;
+    font-family: var(--font-body);
     font-weight: 500;
-    min-width: 45px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
+    min-width: 40px;
+    font-size: 0.9rem;
 }
 
 .pagination button:hover {
-    background: var(--neon-green);
-    color: var(--cyber-dark);
-    box-shadow: 0 0 10px var(--neon-green);
+    background: #f0fdf9;
+    border-color: var(--color-primary);
+    color: var(--color-primary);
 }
 
 .pagination button.active {
-    background: var(--neon-green);
-    color: var(--cyber-dark);
+    background: var(--color-primary);
+    border-color: var(--color-primary);
+    color: #ffffff;
     font-weight: 600;
-    box-shadow: 0 0 10px var(--neon-green);
 }
 
 .pagination button:disabled {
-    opacity: 0.5;
+    opacity: 0.4;
     cursor: not-allowed;
 }
 
 .pagination button:disabled:hover {
-    background: var(--cyber-dark);
-    color: var(--neon-green);
-    box-shadow: none;
+    background: var(--color-bg-card);
+    border-color: var(--color-border);
+    color: var(--color-text-muted);
 }
 
 .pagination-info {
     text-align: center;
-    color: var(--text-muted);
-    font-family: 'Rajdhani', sans-serif;
-    text-transform: uppercase;
-    letter-spacing: 1px;
+    color: var(--color-text-muted);
+    font-family: var(--font-body);
+    font-size: 0.85rem;
 }
 
 /* No Results */
 .no-results {
     text-align: center;
     padding: 60px 20px;
-    color: var(--text-muted);
+    color: var(--color-text-muted);
 }
 
 .no-results-content i {
-    font-size: 4rem;
-    color: var(--neon-green);
+    font-size: 3.5rem;
+    color: var(--color-primary);
     margin-bottom: 20px;
-    text-shadow: 0 0 20px var(--neon-green);
+    opacity: 0.5;
 }
 
 .no-results-content h3 {
-    font-size: 1.5rem;
-    margin-bottom: 10px;
-    color: var(--neon-green);
-    font-family: 'Rajdhani', sans-serif;
-    text-transform: uppercase;
-    letter-spacing: 1px;
+    font-size: 1.4rem;
+    margin-bottom: 8px;
+    color: var(--color-text-body);
+    font-family: var(--font-display);
 }
 
 .no-results-content p {
-    font-family: 'Rajdhani', sans-serif;
-    font-size: 1.1rem;
-    letter-spacing: 0.5px;
+    font-family: var(--font-body);
+    font-size: 1rem;
+    color: var(--color-text-muted);
 }
 
 /* Responsive Design */
 @media (max-width: 768px) {
     .section-title {
-        font-size: 2.2rem;
+        font-size: 2rem;
         flex-direction: column;
         gap: 0.5rem;
     }
 
     .tutorials-controls {
-        padding: 20px;
+        padding: 16px;
     }
 
     .filter-controls {
         flex-direction: column;
-        gap: 15px;
+        gap: 12px;
     }
 
     .tag-filter {
@@ -393,31 +354,31 @@ main {
 
     .posts-grid {
         grid-template-columns: 1fr;
-        gap: 20px;
+        gap: 16px;
     }
 
     .pagination {
         flex-wrap: wrap;
-        gap: 5px;
+        gap: 4px;
     }
 
     .pagination button {
-        padding: 8px 12px;
-        font-size: 14px;
+        padding: 8px 11px;
+        font-size: 0.85rem;
     }
 }
 
 @media (max-width: 480px) {
     .section-title {
-        font-size: 1.8rem;
+        font-size: 1.75rem;
     }
 
     .tutorials-subtitle {
-        font-size: 1rem;
+        font-size: 0.9rem;
     }
 
     .filter-btn {
-        font-size: 12px;
+        font-size: 0.8rem;
         padding: 6px 10px;
     }
 
@@ -426,10 +387,10 @@ main {
     }
 
     .post-image {
-        height: 100px;
+        height: 80px;
     }
 
     .post-image i {
-        font-size: 2.5rem;
+        font-size: 2rem;
     }
 }
