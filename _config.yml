@@ -35,6 +35,8 @@ plugins:
   - jekyll-seo-tag
   - jekyll-sitemap
 
+future: true
+
 collections:
   articles:
     output: true
