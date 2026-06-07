@@ -87,6 +87,33 @@ code:not(pre code) {
     background: transparent;
 }
 
+.post-content table {
+    width: 100%;
+    border-collapse: collapse;
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin: 1.75rem 0;
+    font-size: 0.9rem;
+}
+
+.post-content table th,
+.post-content table td {
+    border: 1px solid var(--color-border);
+    padding: 0.55rem 0.85rem;
+    text-align: left;
+}
+
+.post-content table th {
+    background: var(--color-bg-page);
+    font-weight: 600;
+    color: var(--color-primary-dark);
+}
+
+.post-content table tr:nth-child(even) td {
+    background: var(--color-bg-page);
+}
+
 .post-tag {
     background: #e6f7f2;
     color: var(--color-primary-dark);
@@ -100,4 +127,38 @@ code:not(pre code) {
 
 footer {
     border-top: 1px solid var(--color-border);
+}
+
+@media (max-width: 768px) {
+    .post-wrapper {
+        padding: 1.5rem 1rem;
+    }
+
+    .post-title {
+        font-size: 1.6rem;
+    }
+
+    .post-content pre {
+        padding: 1rem;
+        font-size: 13px;
+    }
+}
+
+@media (max-width: 480px) {
+    main {
+        margin-top: 5.5rem;
+    }
+
+    .post-wrapper {
+        padding: 1.25rem 0.75rem;
+    }
+
+    .post-title {
+        font-size: 1.35rem;
+    }
+
+    .post-content pre {
+        padding: 0.75rem;
+        font-size: 12px;
+    }
 }
