@@ -63,6 +63,9 @@ css:
                     <div class="post-meta">
                         <span class="post-tag post-tag--quiz">Quiz</span>
                         {% if quiz.difficulty %}<span class="post-tag">{{ quiz.difficulty }}</span>{% endif %}
+                        {% for tag in quiz.tags %}
+                        <span class="post-tag">{{ tag }}</span>
+                        {% endfor %}
                     </div>
                     <h3><a href="{{ '/quizzes/' | append: quiz.slug | relative_url }}">{{ quiz.title }}</a></h3>
                     <p class="post-excerpt">{{ quiz.description | strip_html | truncatewords: 20 }}</p>
