@@ -198,6 +198,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (progressEl) progressEl.setAttribute('aria-valuenow', '100');
         questionEl.hidden = true;
         controlsEl.hidden = true;
+        controlsEl.innerHTML = '';   // clear: .quiz-controls{display:flex} overrides [hidden]
         counterEl.textContent = 'Complete';
         scoreEl.textContent = '';
 
@@ -221,12 +222,21 @@ document.addEventListener('DOMContentLoaded', function () {
                 <button type="button" class="btn-secondary" data-action="review">
                     <i class="fas fa-list-check"></i> Review answers
                 </button>
+                <a class="btn-secondary" href="${quizzesUrl()}">
+                    <i class="fas fa-grip"></i> All quizzes
+                </a>
             </div>
         </div>
         <div id="quiz-review" hidden></div>`;
 
         resultEl.innerHTML = html;
         resultEl.hidden = false;
+        root.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function quizzesUrl() {
+        const back = document.querySelector('.quiz-back');
+        return (back && back.getAttribute('href')) || '/quizzes/';
     }
 
     function onResultClick(e) {

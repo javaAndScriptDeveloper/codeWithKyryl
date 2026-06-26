@@ -1,5 +1,9 @@
 /* Quizzes — index cards + quiz engine */
 
+/* The `hidden` attribute must always win over component display rules
+   (e.g. .quiz-controls{display:flex}), otherwise JS-hidden elements linger. */
+[hidden] { display: none !important; }
+
 /* Local state colors (no success/danger tokens exist in :root) */
 :root {
     --quiz-success: var(--color-primary);
@@ -51,6 +55,18 @@ main {
 
 .quiz-card-meta i {
     color: var(--color-primary);
+}
+
+/* Quiz cards reuse tutorials' .post-card; meta sits above the CTA */
+.post-card .quiz-card-meta {
+    margin: 2px 0 14px;
+}
+
+/* Difficulty stands out from topic tags in the chip row */
+.tag-chip-difficulty {
+    background: var(--color-primary);
+    color: #fff;
+    border-color: var(--color-primary);
 }
 
 /* ---- Quiz page shell -------------------------------------------------- */
