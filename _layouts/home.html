@@ -60,13 +60,17 @@ css:
                     <i class="fas fa-brain"></i>
                 </div>
                 <div class="post-content">
-                    <div class="post-meta">
+                    <div class="post-meta post-meta--quiz">
                         <span class="post-tag post-tag--quiz">Quiz</span>
-                        {% if quiz.difficulty %}<span class="post-tag">{{ quiz.difficulty }}</span>{% endif %}
+                        {% if quiz.difficulty %}<span class="qchip-difficulty level-{{ quiz.difficulty | downcase }}"><i class="fas fa-signal"></i>{{ quiz.difficulty }}</span>{% endif %}
+                    </div>
+                    {% if quiz.tags and quiz.tags.size > 0 %}
+                    <div class="quiz-topic-row">
                         {% for tag in quiz.tags %}
-                        <span class="post-tag">{{ tag }}</span>
+                        <span class="post-tag post-tag--topic">{{ tag }}</span>
                         {% endfor %}
                     </div>
+                    {% endif %}
                     <h3><a href="{{ '/quizzes/' | append: quiz.slug | relative_url }}">{{ quiz.title }}</a></h3>
                     <p class="post-excerpt">{{ quiz.description | strip_html | truncatewords: 20 }}</p>
                     <a href="{{ '/quizzes/' | append: quiz.slug | relative_url }}" class="subtle-cta">

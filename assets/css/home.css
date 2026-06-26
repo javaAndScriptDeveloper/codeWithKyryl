@@ -438,3 +438,46 @@
 .post-card--quiz .post-image {
     background: linear-gradient(135deg, #e6f7f2, #d3f0e6);
 }
+
+/* Row 1 = Quiz + difficulty badges; row 2 = topic tags (separated) */
+.post-meta--quiz {
+    justify-content: flex-start;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.quiz-topic-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-bottom: 0.75rem;
+    padding-top: 0.5rem;
+    border-top: 1px dashed var(--color-border);
+}
+
+/* Difficulty: same green-ramp signal chip as the quizzes page */
+.qchip-difficulty {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.25rem 0.7rem;
+    border-radius: 20px;
+    font-weight: 600;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    background: var(--color-primary);
+    color: #fff;
+    border: 1px solid var(--color-primary);
+}
+.qchip-difficulty i { font-size: 0.7em; }
+.qchip-difficulty.level-junior { background: #cdeee1; color: var(--color-primary-dark); border-color: #cdeee1; }
+.qchip-difficulty.level-middle { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
+.qchip-difficulty.level-senior { background: var(--color-primary-dark); color: #fff; border-color: var(--color-primary-dark); }
+
+/* Topic tags: outlined/ghost so they read as secondary to the badges */
+.post-card--quiz .post-tag--topic {
+    background: transparent;
+    color: var(--color-text-muted);
+    border: 1px solid var(--color-border);
+}
