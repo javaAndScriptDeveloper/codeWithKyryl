@@ -429,7 +429,7 @@
     }
 }
 
-/* ── Quiz cards + CTA in the Latest Transmissions feed ── */
+/* ── Quiz cards in the Latest Transmissions feed ── */
 .post-tag--quiz {
     background: var(--color-primary);
     color: #fff;
@@ -437,35 +437,4 @@
 
 .post-card--quiz .post-image {
     background: linear-gradient(135deg, #e6f7f2, #d3f0e6);
-}
-
-.home-quiz-cta {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 1rem;
-    margin-top: 2rem;
-    padding: 1.25rem 1.75rem;
-    background: #e6f7f2;
-    border: 1px solid var(--color-primary);
-    border-radius: 12px;
-}
-
-.home-quiz-cta-text {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    font-family: var(--font-display);
-    font-weight: 600;
-    color: var(--color-text-body);
-}
-
-.home-quiz-cta-text i {
-    color: var(--color-primary);
-    font-size: 1.4rem;
-}
-
-.home-quiz-cta .btn-primary {
-    white-space: nowrap;
 }

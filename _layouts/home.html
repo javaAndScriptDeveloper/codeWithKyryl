@@ -79,18 +79,6 @@ css:
             </div>
             {% endif %}
         </div>
-
-        {% if latest_quizzes.size > 0 %}
-        <div class="home-quiz-cta">
-            <div class="home-quiz-cta-text">
-                <i class="fas fa-brain"></i>
-                <span>Think you know backend? Put it to the test.</span>
-            </div>
-            <a href="{{ '/quizzes/' | relative_url }}" class="btn-primary">
-                Take a quiz <i class="fas fa-arrow-right"></i>
-            </a>
-        </div>
-        {% endif %}
     </div>
 </section>
 
