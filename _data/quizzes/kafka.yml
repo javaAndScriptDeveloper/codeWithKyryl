@@ -1,0 +1,142 @@
+# Apache Kafka quiz.
+# Schema notes:
+#   type: single | multi | boolean
+#   correctIndex   -> 0-based, used by single & boolean
+#   correctIndexes -> 0-based array, used by multi ("select all that apply")
+slug: kafka
+title: "Apache Kafka"
+subtitle: "Cert-style questions on partitions, ISR, delivery semantics & consumer groups"
+description: "12 exam-grade questions modelled on the Confluent Certified Developer exam. Tricky edge cases, with an explanation after every answer."
+difficulty: "Intermediate"
+tags: ["Kafka", "Streaming", "Certification"]
+order: 1
+questions:
+  - id: 1
+    type: single
+    question: "A topic has 6 partitions. A single consumer group subscribed to it has 8 consumers. What happens?"
+    options:
+      - "All 8 consumers receive messages in round-robin across the 6 partitions"
+      - "6 consumers are assigned one partition each; 2 consumers stay idle"
+      - "The group fails to rebalance and throws an exception"
+      - "Kafka automatically creates 2 more partitions to match the consumers"
+    correctIndex: 1
+    explanation: "Within one consumer group a partition is owned by at most one consumer, so with 6 partitions only 6 consumers can be active — the remaining 2 sit idle as hot standbys. Kafka never auto-increases partition count to match consumer count."
+
+  - id: 2
+    type: single
+    question: "A topic has replication.factor=3 and min.insync.replicas=2. A producer uses acks=all. Two of the three replicas go offline. What happens to a produce request?"
+    options:
+      - "It succeeds — one in-sync replica is still enough"
+      - "It fails with NotEnoughReplicasException"
+      - "It blocks indefinitely until a replica returns"
+      - "It succeeds but logs a data-loss warning"
+    correctIndex: 1
+    explanation: "With acks=all the leader requires min.insync.replicas (2) replicas in the ISR to acknowledge. Only 1 remains in sync, so the broker rejects the write with NotEnoughReplicas / NotEnoughReplicasAfterAppend rather than risk under-replicated durability."
+
+  - id: 3
+    type: single
+    question: "A producer has retries=3 and max.in.flight.requests.per.connection=5, with idempotence DISABLED. A batch fails and is retried. What is the risk?"
+    options:
+      - "Messages can be reordered within a partition"
+      - "Messages are silently dropped"
+      - "The producer deadlocks"
+      - "Nothing — ordering is always preserved per partition"
+    correctIndex: 0
+    explanation: "With multiple in-flight requests and retries but no idempotence, a later batch can be written before a retried earlier batch, reordering records within the partition. Fix: enable.idempotence=true (caps in-flight at 5 and preserves order), or set max.in.flight.requests.per.connection=1."
+
+  - id: 4
+    type: multi
+    question: "Which of these settings affect durability against broker failure / data loss? (select all that apply)"
+    options:
+      - "acks=all on the producer"
+      - "min.insync.replicas on the topic/broker"
+      - "linger.ms on the producer"
+      - "replication.factor on the topic"
+    correctIndexes: [0, 1, 3]
+    explanation: "acks=all, min.insync.replicas and replication.factor together determine how many replicas must hold a record before it is considered committed — the durability triangle. linger.ms only batches records to improve throughput; it has no effect on durability."
+
+  - id: 5
+    type: single
+    question: "What exactly does enable.idempotence=true guarantee for a producer?"
+    options:
+      - "Exactly-once delivery across multiple topics and partitions"
+      - "No duplicate records from producer retries, per partition, preserving order"
+      - "De-duplication of records on the consumer side"
+      - "Ordering of records across all partitions of a topic"
+    correctIndex: 1
+    explanation: "The idempotent producer attaches a producer ID and per-partition sequence numbers so the broker discards duplicates caused by retries — scoped to a single partition and producer session, with order preserved. Cross-partition/cross-topic atomicity requires transactions; consumers do no de-duplication."
+
+  - id: 6
+    type: single
+    question: "A topic is configured with cleanup.policy=compact. What is guaranteed about its contents?"
+    options:
+      - "Only messages from the last 7 days are kept"
+      - "At least the latest value for each key is retained; older values for that key may be removed"
+      - "Every message is kept forever"
+      - "Duplicate keys are rejected at produce time"
+    correctIndex: 1
+    explanation: "Log compaction retains at least the most recent value per key; older records for the same key become eligible for removal by the cleaner. A record with a null value (a tombstone) marks the key for deletion. Compaction is about per-key history, not time — that's cleanup.policy=delete with retention.ms."
+
+  - id: 7
+    type: boolean
+    question: "Increasing a topic's replication.factor improves read throughput, because consumers can load-balance reads across all replicas."
+    options:
+      - "True"
+      - "False"
+    correctIndex: 1
+    explanation: "False. By default every read and write for a partition goes through its leader replica; followers exist only for durability and failover, not to serve reads. So replication.factor improves durability, not read throughput. (Follower fetching from a nearby replica exists since Kafka 2.4, but it's an opt-in, rack-aware feature — not the default.)"
+
+  - id: 8
+    type: single
+    question: "You run a read-process-write loop (consume from topic A, transform, produce to topic B) and need exactly-once across the two topics. Which is REQUIRED?"
+    options:
+      - "acks=all plus enable.idempotence=true on the producer is sufficient"
+      - "A transactional producer (transactional.id set) that writes the output records and commits the consumed offsets in the same transaction via sendOffsetsToTransaction()"
+      - "Manual offset commit after the produce call, with auto-commit disabled"
+      - "Setting isolation.level=read_committed on the producer"
+    correctIndex: 1
+    explanation: "Exactly-once in a consume-transform-produce pipeline needs a transactional producer: it writes the output records AND the consumed offsets atomically via producer.sendOffsetsToTransaction(...) inside begin/commitTransaction, with read_committed consumers downstream. Idempotence alone only dedupes producer retries per partition; a plain manual commit can't bind offsets to the output atomically (a crash between produce and commit replays or loses). read_committed is a consumer setting, not a producer one."
+
+  - id: 9
+    type: single
+    question: "With enable.auto.commit=true, what is the classic message-loss pitfall?"
+    options:
+      - "Offsets are never committed, so records are reprocessed forever"
+      - "poll() can auto-commit offsets for records you haven't finished processing yet, so a crash loses them"
+      - "Auto-commit blocks the consumer until the broker acknowledges"
+      - "Auto-commit duplicates every record exactly once"
+    correctIndex: 1
+    explanation: "Auto-commit periodically commits the offsets returned by the latest poll() on the next poll, based on auto.commit.interval.ms — independent of whether your processing finished. If you crash after the commit but before processing those records, they are skipped (lost). Manual commit after processing avoids this."
+
+  - id: 10
+    type: multi
+    question: "Which events trigger a consumer group rebalance? (select all that apply)"
+    options:
+      - "A new consumer joins the group"
+      - "A consumer fails to call poll() within max.poll.interval.ms"
+      - "Partitions are added to a subscribed topic"
+      - "A consumer commits its offsets"
+    correctIndexes: [0, 1, 2]
+    explanation: "Rebalances happen when group membership or partition assignment must change: a consumer joining, a consumer leaving/being evicted (e.g. exceeding max.poll.interval.ms so it's considered dead), or the subscribed partition set changing. Committing offsets is routine bookkeeping and does not trigger a rebalance."
+
+  - id: 11
+    type: single
+    question: "Under which condition does min.insync.replicas actually take effect?"
+    options:
+      - "Always, for every produce request"
+      - "Only when the producer uses acks=all (acks=-1)"
+      - "Only on the consumer side"
+      - "Only when replication.factor equals min.insync.replicas"
+    correctIndex: 1
+    explanation: "min.insync.replicas is only enforced together with acks=all — it sets the minimum number of in-sync replicas that must acknowledge the write. With acks=1 or acks=0 the leader doesn't wait for the ISR, so the setting has no effect on those produce requests."
+
+  - id: 12
+    type: single
+    question: "Your application depends on per-key ordering (all events for a key in order). Which action breaks that guarantee?"
+    options:
+      - "Increasing the number of partitions on the topic"
+      - "Adding more consumers (up to the partition count)"
+      - "Enabling the idempotent producer"
+      - "Increasing replication.factor"
+    correctIndex: 0
+    explanation: "The default partitioner maps key -> hash(key) % partitionCount. Increasing the partition count changes that mapping, so a key's future records can land in a different partition from its old ones — destroying the per-key ordering. The other actions don't change key-to-partition routing."

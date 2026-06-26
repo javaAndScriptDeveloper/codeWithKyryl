@@ -1,0 +1,57 @@
+---
+layout: page
+title: "Quizzes"
+css:
+- /assets/css/quizzes.css
+---
+
+<section class="tutorials-header">
+    <div class="container">
+        <h1 class="section-title">
+            <i class="fas fa-brain"></i>
+            Quizzes
+        </h1>
+        <p class="tutorials-subtitle">Test your backend knowledge — pick a topic and get instant explanations</p>
+    </div>
+</section>
+
+<section class="tutorials-content">
+    <div class="container">
+        {% assign quizzes = "" | split: "" %}
+        {% for item in site.data.quizzes %}
+            {% assign quizzes = quizzes | push: item[1] %}
+        {% endfor %}
+        {% assign quizzes = quizzes | sort: 'order' %}
+
+        {% if quizzes.size == 0 %}
+        <div class="no-results">
+            <div class="no-results-content">
+                <i class="fas fa-brain"></i>
+                <h3>No quizzes yet</h3>
+                <p>Check back soon — quizzes are on the way.</p>
+            </div>
+        </div>
+        {% else %}
+        <div class="quiz-grid">
+            {% for quiz in quizzes %}
+            <a class="post-card quiz-card" href="{{ '/quizzes/' | append: quiz.slug | relative_url }}">
+                <div class="post-image">
+                    <i class="fas fa-brain"></i>
+                </div>
+                <div class="post-content">
+                    <div class="post-tags">
+                        <span class="tag-chip">{{ quiz.difficulty }}</span>
+                    </div>
+                    <h3>{{ quiz.title }}</h3>
+                    <p class="post-excerpt">{{ quiz.description }}</p>
+                    <span class="quiz-card-meta">
+                        <i class="fas fa-list-ol"></i>
+                        {{ quiz.questions | size }} questions
+                    </span>
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+</section>

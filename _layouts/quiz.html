@@ -1,0 +1,52 @@
+---
+layout: page
+title: "Quiz"
+css:
+- /assets/css/quizzes.css
+js:
+- /assets/js/quiz.js
+---
+
+{% assign quiz = site.data.quizzes[page.quiz] %}
+{% unless quiz %}
+<section class="tutorials-content">
+    <div class="container">
+        <div class="no-results">
+            <div class="no-results-content">
+                <i class="fas fa-triangle-exclamation"></i>
+                <h3>Quiz not found</h3>
+                <p>This quiz could not be loaded. <a href="{{ '/quizzes/' | relative_url }}">Back to all quizzes</a>.</p>
+            </div>
+        </div>
+    </div>
+</section>
+{% else %}
+<section class="quiz-page">
+    <div class="container">
+        <a href="{{ '/quizzes/' | relative_url }}" class="quiz-back">
+            <i class="fas fa-arrow-left"></i> All quizzes
+        </a>
+
+        <div class="quiz-header">
+            <h1 class="quiz-title">{{ quiz.title }}</h1>
+            <p class="quiz-subtitle">{{ quiz.subtitle }}</p>
+        </div>
+
+        <div class="quiz" id="quiz-root">
+            <div class="quiz-topbar">
+                <span class="quiz-counter" id="quiz-counter"></span>
+                <span class="quiz-score" id="quiz-score"></span>
+            </div>
+            <div class="quiz-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                <div class="quiz-progress-bar" id="quiz-progress-bar"></div>
+            </div>
+
+            <div id="quiz-question" aria-live="polite"></div>
+            <div id="quiz-controls" class="quiz-controls"></div>
+            <div id="quiz-result" hidden></div>
+        </div>
+    </div>
+</section>
+
+<script type="application/json" id="quiz-data">{{ quiz | jsonify }}</script>
+{% endunless %}
