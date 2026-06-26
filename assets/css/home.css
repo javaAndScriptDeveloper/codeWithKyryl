@@ -439,17 +439,10 @@
     background: linear-gradient(135deg, #e6f7f2, #d3f0e6);
 }
 
-/* Row 1 = Quiz + difficulty badges; row 2 = topic tags (separated) */
-.post-meta--quiz {
+/* Row 1 = topic tags (same as posts); row 2 = Quiz + difficulty badges */
+.post-meta--quiz.quiz-badges-row {
     justify-content: flex-start;
     gap: 0.5rem;
-    margin-bottom: 0.5rem;
-}
-
-.quiz-topic-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.4rem;
     margin-bottom: 0.75rem;
     padding-top: 0.5rem;
     border-top: 1px dashed var(--color-border);
@@ -474,10 +467,3 @@
 .qchip-difficulty.level-junior { background: #cdeee1; color: var(--color-primary-dark); border-color: #cdeee1; }
 .qchip-difficulty.level-middle { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
 .qchip-difficulty.level-senior { background: var(--color-primary-dark); color: #fff; border-color: var(--color-primary-dark); }
-
-/* Topic tags: outlined/ghost so they read as secondary to the badges */
-.post-card--quiz .post-tag--topic {
-    background: transparent;
-    color: var(--color-text-muted);
-    border: 1px solid var(--color-border);
-}
