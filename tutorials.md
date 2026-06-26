@@ -6,4 +6,6 @@
 # See: https://jekyllrb.com/docs/themes/#overriding-theme-defaults
 #
 layout: tutorials
+title: "Backend Engineering Tutorials"
+description: "In-depth Java, Spring Boot, PostgreSQL, Kafka and microservices tutorials and deep dives — practical, production-focused engineering write-ups."
 ---
