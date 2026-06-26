@@ -1,0 +1,109 @@
+# Apache Kafka — Fundamentals (Junior level).
+# Schema notes:
+#   type: single | multi | boolean
+#   correctIndex   -> 0-based, used by single & boolean
+#   correctIndexes -> 0-based array, used by multi ("select all that apply")
+slug: kafka-junior
+title: "Apache Kafka — Fundamentals"
+subtitle: "The basics: topics, partitions, producers, consumers & offsets"
+description: "10 entry-level questions on Apache Kafka fundamentals — topics, partitions, consumer groups, offsets and retention. Each answer comes with a short explanation."
+difficulty: "Junior"
+tags: ["Kafka", "Streaming", "Fundamentals"]
+order: 1
+questions:
+  - id: 1
+    type: single
+    question: "What is a Kafka topic?"
+    options:
+      - "A named, append-only log of messages that producers write to and consumers read from"
+      - "A single TCP connection between a producer and a broker"
+      - "A consumer's in-memory buffer of unprocessed messages"
+      - "A schema definition shared by all producers"
+    correctIndex: 0
+    explanation: "A topic is a named stream/log of records. Producers append messages to it and consumers read them. It is the core abstraction for organizing data in Kafka."
+  - id: 2
+    type: single
+    question: "What is a partition?"
+    options:
+      - "An ordered, append-only subset of a topic that enables parallelism and scaling"
+      - "A backup copy of a topic kept on another broker"
+      - "A group of consumers reading the same topic"
+      - "A time window used to expire old messages"
+    correctIndex: 0
+    explanation: "A topic is split into partitions. Each partition is an ordered log, and partitions let a topic be spread across brokers and consumed in parallel. Ordering is guaranteed only within a partition, not across them."
+  - id: 3
+    type: single
+    question: "What is a message offset?"
+    options:
+      - "A monotonically increasing id identifying a message's position within a partition"
+      - "The timestamp when a message was produced"
+      - "The size in bytes of a message"
+      - "The number of consumers that have read a message"
+    correctIndex: 0
+    explanation: "An offset is the sequential position of a record inside a partition. Consumers track which offset they've read so they know where to continue."
+  - id: 4
+    type: single
+    question: "In a consumer group, how are a topic's partitions distributed among the consumers?"
+    options:
+      - "Each partition is assigned to exactly one consumer in the group at a time"
+      - "Every consumer reads every partition for redundancy"
+      - "Partitions are shared so two consumers process the same partition together"
+      - "Only the group leader reads; the others stay idle"
+    correctIndex: 0
+    explanation: "Within a single consumer group, each partition is consumed by exactly one member. This is how Kafka scales consumption: add consumers (up to the partition count) to share the load."
+  - id: 5
+    type: boolean
+    question: "If a consumer group has more consumers than the topic has partitions, the extra consumers sit idle."
+    options:
+      - "True"
+      - "False"
+    correctIndex: 0
+    explanation: "True. A partition maps to one consumer per group, so consumers beyond the partition count have nothing to consume and remain idle until a partition frees up."
+  - id: 6
+    type: single
+    question: "What primarily determines which partition a produced message lands in?"
+    options:
+      - "The message key (hash of the key), or round-robin when there is no key"
+      - "The size of the message payload"
+      - "The consumer that will eventually read it"
+      - "The alphabetical order of the topic name"
+    correctIndex: 0
+    explanation: "By default Kafka hashes the message key to pick a partition, so all messages with the same key go to the same partition (preserving their order). With no key, the producer spreads messages across partitions."
+  - id: 7
+    type: single
+    question: "What is the role of a Kafka broker?"
+    options:
+      - "A server that stores partition data and serves produce/fetch requests"
+      - "A client library that batches messages before sending"
+      - "A schema registry that validates message formats"
+      - "A dashboard for monitoring consumer lag"
+    correctIndex: 0
+    explanation: "A broker is a Kafka server. It stores the partitions assigned to it and handles reads and writes. A Kafka cluster is a set of brokers."
+  - id: 8
+    type: boolean
+    question: "Once a consumer reads a message, Kafka deletes it from the partition."
+    options:
+      - "True"
+      - "False"
+    correctIndex: 1
+    explanation: "False. Kafka is not a queue that removes messages on read. Messages stay in the log until a retention policy (time or size based) expires them, so many consumer groups can independently read the same data."
+  - id: 9
+    type: single
+    question: "What does the replication factor of a topic control?"
+    options:
+      - "How many copies of each partition are kept across brokers for fault tolerance"
+      - "How many consumers can read the topic at once"
+      - "How many partitions the topic has"
+      - "How long messages are retained"
+    correctIndex: 0
+    explanation: "Replication factor is the number of copies of each partition. With factor 3, one partition is the leader and two are followers on other brokers, so the data survives broker failures."
+  - id: 10
+    type: single
+    question: "What does retention configuration (e.g. retention.ms) do?"
+    options:
+      - "Defines how long messages are kept before Kafka is allowed to delete them"
+      - "Sets how many times a producer retries a failed send"
+      - "Limits how many consumer groups can subscribe"
+      - "Controls the compression algorithm used on disk"
+    correctIndex: 0
+    explanation: "Retention controls how long (or how much data) a topic keeps before old segments are eligible for deletion. It is independent of whether anyone has consumed the messages."

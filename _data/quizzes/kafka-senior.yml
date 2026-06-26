@@ -1,0 +1,111 @@
+# Apache Kafka — Internals & Edge Cases (Senior level).
+# Schema notes:
+#   type: single | multi | boolean
+#   correctIndex   -> 0-based, used by single & boolean
+#   correctIndexes -> 0-based array, used by multi ("select all that apply")
+slug: kafka-senior
+title: "Apache Kafka — Deep Dive"
+subtitle: "ISR, EOS, rebalancing, compaction & the traps that bite in production"
+description: "10 hard questions on Apache Kafka internals for senior engineers — ISR and acks, exactly-once semantics, transactions, log compaction, rebalancing and ordering guarantees. Explanation after every answer."
+difficulty: "Senior"
+tags: ["Kafka", "Streaming", "Internals"]
+order: 3
+questions:
+  - id: 1
+    type: single
+    question: "A topic has replication.factor=3 and min.insync.replicas=2, and the producer uses acks=all. Two of the three replicas (including a follower) go offline so only the leader is in the ISR. What happens to produce requests?"
+    options:
+      - "They fail with NotEnoughReplicas because the ISR size is below min.insync.replicas"
+      - "They succeed as soon as the leader writes locally, since acks=all only needs the leader"
+      - "They succeed but silently downgrade to acks=1"
+      - "They block forever with no error"
+    correctIndex: 0
+    explanation: "acks=all means the leader waits for all in-sync replicas to ack, AND the write is only accepted if the ISR has at least min.insync.replicas members. With only the leader in the ISR (1 < 2), the broker rejects the produce with NotEnoughReplicas(AfterAppend), favoring durability over availability."
+  - id: 2
+    type: multi
+    question: "Which conditions are required for Kafka to provide exactly-once semantics (EOS) for a read-process-write pipeline? (select all that apply)"
+    options:
+      - "An idempotent producer (enable.idempotence=true)"
+      - "Transactions with a stable transactional.id, committing offsets via sendOffsetsToTransaction"
+      - "Consumers reading with isolation.level=read_committed"
+      - "Setting acks=0 to maximize throughput"
+    correctIndexes: [0, 1, 2]
+    explanation: "EOS needs the idempotent producer (dedups retries via producer id + sequence), transactions that atomically write output records and consumer offsets, and downstream consumers using read_committed so they never see aborted/uncommitted data. acks=0 disables acknowledgements entirely and is incompatible with idempotence/EOS."
+  - id: 3
+    type: single
+    question: "What is the durability risk of enabling unclean.leader.election.enable=true?"
+    options:
+      - "An out-of-sync replica can become leader, discarding committed messages the old leader had"
+      - "Producers will be unable to elect any leader, halting the partition"
+      - "Consumers will read each message twice"
+      - "It forces acks=all on every producer"
+    correctIndex: 0
+    explanation: "Unclean leader election lets a replica that was NOT in the ISR become leader when all in-sync replicas are down. That replica may be missing the latest committed records, so enabling it trades data loss for availability. Disabled (default) keeps the partition offline until an in-sync replica returns."
+  - id: 4
+    type: single
+    question: "With the cooperative-sticky assignor (incremental cooperative rebalancing), how does a rebalance differ from the legacy eager protocol?"
+    options:
+      - "Consumers keep partitions they retain and only revoke the ones being reassigned, avoiding a full stop-the-world"
+      - "All consumers revoke every partition first, then everything is reassigned"
+      - "Rebalancing is disabled entirely and partitions never move"
+      - "The group leader processes all partitions during the rebalance"
+    correctIndex: 0
+    explanation: "Eager rebalancing revokes all partitions from all members (a global pause) before reassigning. Cooperative incremental rebalancing only revokes the partitions that actually need to move, so most consumers keep processing their partitions across the rebalance."
+  - id: 5
+    type: single
+    question: "In a log-compacted topic, what does a record with a non-null key and a null value represent?"
+    options:
+      - "A tombstone that marks the key for deletion during compaction"
+      - "A malformed record that the broker rejects"
+      - "A heartbeat used to keep the partition alive"
+      - "A request to compact the entire partition immediately"
+    correctIndex: 0
+    explanation: "In compaction, a null value for a key is a tombstone: compaction retains the latest value per key, and a tombstone tells consumers/compaction the key is deleted. Tombstones themselves are retained for delete.retention.ms so consumers can observe the deletion before they're removed."
+  - id: 6
+    type: single
+    question: "Why does enable.idempotence=true require max.in.flight.requests.per.connection <= 5 to preserve ordering on retries?"
+    options:
+      - "The broker deduplicates by producer id + sequence number and can only reorder/dedup within a bounded in-flight window"
+      - "More than 5 connections exhausts the broker's file descriptors"
+      - "Each in-flight request needs its own transactional.id"
+      - "Consumers can only track 5 offsets at a time"
+    correctIndex: 0
+    explanation: "The idempotent producer tags each batch with a producer id and monotonic sequence number per partition. The broker uses these to dedup retries and detect gaps, but it can only guarantee ordering across retries when in-flight requests stay within a bounded window (<=5). Beyond that, a retried batch could be written out of order."
+  - id: 7
+    type: single
+    question: "A consumer using isolation.level=read_committed reads a partition that has an open (uncommitted) transaction. Up to which offset can it consume?"
+    options:
+      - "Up to the Last Stable Offset (LSO) — it cannot read past the first still-open transaction"
+      - "Up to the log end offset, including the uncommitted records"
+      - "Only up to the high watermark minus one"
+      - "Nothing until the transaction is aborted"
+    correctIndex: 0
+    explanation: "read_committed consumers only advance to the Last Stable Offset, the offset of the first ongoing transaction. Records belonging to open transactions are buffered and not delivered until that transaction commits (delivered) or aborts (skipped), which is how aborted data is filtered out."
+  - id: 8
+    type: single
+    question: "What does the transaction coordinator's producer epoch (fencing) protect against?"
+    options:
+      - "A zombie producer instance with the same transactional.id writing after a newer instance took over"
+      - "Two consumers in different groups reading the same partition"
+      - "A broker losing its position in the ISR"
+      - "Schema incompatibility between producer and consumer"
+    correctIndex: 0
+    explanation: "When a producer with a given transactional.id initializes, the coordinator bumps the epoch and fences older epochs. If an old ('zombie') instance — e.g. after a pause or network partition — tries to continue its transaction, its stale epoch is rejected, preventing duplicate or conflicting writes."
+  - id: 9
+    type: boolean
+    question: "Setting acks=all guarantees that a successfully produced message can never be lost, regardless of other settings."
+    options:
+      - "True"
+      - "False"
+    correctIndex: 1
+    explanation: "False. acks=all only ensures all current ISR members acked. If the ISR has shrunk (e.g. to just the leader) and min.insync.replicas isn't enforced, or unclean leader election is enabled, an acked message can still be lost. Durability needs acks=all AND min.insync.replicas>=2 AND unclean election disabled."
+  - id: 10
+    type: single
+    question: "Consumer lag for a partition keeps growing even though the consumer is healthy and CPU is low. Which explanation is most consistent with that symptom?"
+    options:
+      - "The partition's produce rate exceeds this single consumer's processing rate, and partition count caps parallelism"
+      - "The replication factor is too low"
+      - "min.insync.replicas is set too high"
+      - "Log compaction is disabled on the topic"
+    correctIndex: 0
+    explanation: "Lag grows when production outpaces consumption. Because one partition is processed by at most one consumer per group, you can't add consumers beyond the partition count to catch up — you must add partitions (and consumers) or speed up per-message processing. Replication/compaction/min.insync settings don't drive consumer lag."

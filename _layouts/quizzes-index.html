@@ -26,13 +26,16 @@ js:
         {% endfor %}
         {% assign quizzes = quizzes | sort: 'order' %}
 
-        {% comment %} Build the filter tag set from every quiz's tags + difficulty {% endcomment %}
+        {% comment %} Topic tags (AND filter) — difficulty is handled separately {% endcomment %}
         {% assign tag_list = "" | split: "" %}
         {% for quiz in quizzes %}
             {% for tag in quiz.tags %}{% assign tag_list = tag_list | push: tag %}{% endfor %}
-            {% if quiz.difficulty %}{% assign tag_list = tag_list | push: quiz.difficulty %}{% endif %}
         {% endfor %}
         {% assign all_tags = tag_list | uniq | sort %}
+
+        {% comment %} Difficulty levels (OR filter), shown in canonical order {% endcomment %}
+        {% assign present_levels = quizzes | map: 'difficulty' | uniq %}
+        {% assign level_order = "Junior,Middle,Senior" | split: "," %}
 
         {% if quizzes.size == 0 %}
         <div class="no-results">
@@ -46,15 +49,33 @@ js:
         <!-- Filter Controls -->
         <div class="tutorials-controls">
             <div class="filter-controls">
-                <div class="tag-filter">
-                    {% for tag in all_tags %}
-                    {% if tag != '' %}
-                    <button class="filter-btn" data-tag="{{ tag }}">
-                        <i class="fas fa-tag"></i>
-                        {{ tag }}
-                    </button>
-                    {% endif %}
-                    {% endfor %}
+                {% if present_levels.size > 0 %}
+                <div class="filter-group">
+                    <span class="filter-group-label">Level</span>
+                    <div class="level-filter">
+                        {% for lvl in level_order %}
+                        {% if present_levels contains lvl %}
+                        <button class="filter-btn level-btn level-{{ lvl | downcase }}" data-level="{{ lvl }}">
+                            {{ lvl }}
+                        </button>
+                        {% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+
+                <div class="filter-group">
+                    <span class="filter-group-label">Topic</span>
+                    <div class="tag-filter">
+                        {% for tag in all_tags %}
+                        {% if tag != '' %}
+                        <button class="filter-btn" data-tag="{{ tag }}">
+                            <i class="fas fa-tag"></i>
+                            {{ tag }}
+                        </button>
+                        {% endif %}
+                        {% endfor %}
+                    </div>
                 </div>
             </div>
         </div>
@@ -62,14 +83,17 @@ js:
         <!-- Quizzes Grid -->
         <div class="posts-grid" id="quizzes-container">
             {% for quiz in quizzes %}
-            {% capture quiz_tags %}{{ quiz.tags | join: ',' }}{% if quiz.difficulty %},{{ quiz.difficulty }}{% endif %}{% endcapture %}
-            <article class="post-card" data-tags="{{ quiz_tags }}" data-order="{{ quiz.order }}" data-title="{{ quiz.title }}">
+            <article class="post-card"
+                     data-tags="{{ quiz.tags | join: ',' }}"
+                     data-difficulty="{{ quiz.difficulty }}"
+                     data-order="{{ quiz.order }}"
+                     data-title="{{ quiz.title }}">
                 <div class="post-image">
                     <i class="fas fa-brain"></i>
                 </div>
                 <div class="post-content">
                     <div class="post-tags">
-                        {% if quiz.difficulty %}<span class="tag-chip tag-chip-difficulty">{{ quiz.difficulty }}</span>{% endif %}
+                        {% if quiz.difficulty %}<span class="tag-chip tag-chip-difficulty level-{{ quiz.difficulty | downcase }}">{{ quiz.difficulty }}</span>{% endif %}
                         {% for tag in quiz.tags %}
                         <span class="tag-chip">{{ tag }}</span>
                         {% endfor %}
@@ -103,7 +127,7 @@ js:
             <div class="no-results-content">
                 <i class="fas fa-search"></i>
                 <h3>No quizzes found</h3>
-                <p>No quizzes match the selected tags. Try adjusting your filter.</p>
+                <p>No quizzes match the selected filters. Try adjusting them.</p>
             </div>
         </div>
         {% endif %}

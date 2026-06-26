@@ -69,6 +69,40 @@ main {
     border-color: var(--color-primary);
 }
 
+/* ---- Filter groups (Level = OR, Topic = AND) -------------------------- */
+.filter-group {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.75rem;
+}
+
+.filter-group-label {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 700;
+    color: var(--color-text-muted);
+    min-width: 3.2rem;
+}
+
+.level-filter,
+.tag-filter {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+/* Level colors: Junior = green, Middle = amber, Senior = red */
+.tag-chip-difficulty.level-junior { background: #1D9E75; border-color: #1D9E75; }
+.tag-chip-difficulty.level-middle { background: #d97706; border-color: #d97706; }
+.tag-chip-difficulty.level-senior { background: #dc2626; border-color: #dc2626; }
+
+.level-btn.level-junior.active { background: #1D9E75; border-color: #1D9E75; color: #fff; }
+.level-btn.level-middle.active { background: #d97706; border-color: #d97706; color: #fff; }
+.level-btn.level-senior.active { background: #dc2626; border-color: #dc2626; color: #fff; }
+
 /* ---- Quiz page shell -------------------------------------------------- */
 .quiz-page {
     padding: 100px 0 60px;

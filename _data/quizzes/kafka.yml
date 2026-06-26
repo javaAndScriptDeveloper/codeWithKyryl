@@ -4,12 +4,12 @@
 #   correctIndex   -> 0-based, used by single & boolean
 #   correctIndexes -> 0-based array, used by multi ("select all that apply")
 slug: kafka
-title: "Apache Kafka"
+title: "Apache Kafka — Core"
 subtitle: "Cert-style questions on partitions, ISR, delivery semantics & consumer groups"
 description: "12 exam-grade questions modelled on the Confluent Certified Developer exam. Tricky edge cases, with an explanation after every answer."
-difficulty: "Intermediate"
+difficulty: "Middle"
 tags: ["Kafka", "Streaming", "Certification"]
-order: 1
+order: 2
 questions:
   - id: 1
     type: single

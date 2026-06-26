@@ -3,7 +3,8 @@
 document.addEventListener('DOMContentLoaded', function () {
     const QUIZZES_PER_PAGE = 9;
 
-    const filterBtns = document.querySelectorAll('.filter-btn');
+    const tagBtns = document.querySelectorAll('.filter-btn[data-tag]');
+    const levelBtns = document.querySelectorAll('.filter-btn[data-level]');
     const container = document.getElementById('quizzes-container');
     const pagination = document.getElementById('pagination');
     const paginationInfo = document.getElementById('pagination-info');
@@ -11,7 +12,8 @@ document.addEventListener('DOMContentLoaded', function () {
     if (!container) return;
 
     let currentPage = 1;
-    let selectedTags = [];
+    let selectedTags = [];    // AND logic — card must have ALL selected tags
+    let selectedLevels = [];  // OR logic — card matches ANY selected level
     const allCards = Array.from(container.querySelectorAll('.post-card'));
     let filtered = [...allCards];
 
@@ -19,21 +21,26 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function init() {
         loadStateFromURL();
-        filterBtns.forEach(btn => btn.addEventListener('click', handleFilter));
+        tagBtns.forEach(btn => btn.addEventListener('click', () => toggleFilter(selectedTags, btn.dataset.tag)));
+        levelBtns.forEach(btn => btn.addEventListener('click', () => toggleFilter(selectedLevels, btn.dataset.level)));
         applyFilters();
     }
 
     function loadStateFromURL() {
         const params = new URLSearchParams(window.location.search);
         const tags = params.get('tags');
+        const levels = params.get('levels');
         const page = params.get('page');
-        if (tags) { selectedTags = tags.split(','); updateActiveFilters(); }
+        if (tags) selectedTags = tags.split(',');
+        if (levels) selectedLevels = levels.split(',');
         if (page) currentPage = parseInt(page, 10) || 1;
+        updateActiveFilters();
     }
 
     function updateURL() {
         const params = new URLSearchParams();
         if (selectedTags.length > 0) params.set('tags', selectedTags.join(','));
+        if (selectedLevels.length > 0) params.set('levels', selectedLevels.join(','));
         if (currentPage !== 1) params.set('page', currentPage);
         const newURL = params.toString()
             ? `${window.location.pathname}?${params}`
@@ -41,27 +48,26 @@ document.addEventListener('DOMContentLoaded', function () {
         window.history.replaceState({}, '', newURL);
     }
 
-    function handleFilter(e) {
-        const clickedTag = e.currentTarget.dataset.tag;
-        const i = selectedTags.indexOf(clickedTag);
-        if (i > -1) selectedTags.splice(i, 1);
-        else selectedTags.push(clickedTag);
+    function toggleFilter(list, value) {
+        const i = list.indexOf(value);
+        if (i > -1) list.splice(i, 1);
+        else list.push(value);
         currentPage = 1;
         updateActiveFilters();
         applyFilters();
     }
 
     function updateActiveFilters() {
-        filterBtns.forEach(btn => {
-            btn.classList.toggle('active', selectedTags.includes(btn.dataset.tag));
-        });
+        tagBtns.forEach(btn => btn.classList.toggle('active', selectedTags.includes(btn.dataset.tag)));
+        levelBtns.forEach(btn => btn.classList.toggle('active', selectedLevels.includes(btn.dataset.level)));
     }
 
     function applyFilters() {
         filtered = allCards.filter(card => {
-            if (selectedTags.length === 0) return true;
             const cardTags = card.dataset.tags.split(',').map(t => t.trim()).filter(Boolean);
-            return selectedTags.every(t => cardTags.includes(t));
+            const tagsMatch = selectedTags.length === 0 || selectedTags.every(t => cardTags.includes(t));
+            const levelMatch = selectedLevels.length === 0 || selectedLevels.includes(card.dataset.difficulty);
+            return tagsMatch && levelMatch;
         });
         // Stable order by quiz `order` ascending
         filtered.sort((a, b) =>
