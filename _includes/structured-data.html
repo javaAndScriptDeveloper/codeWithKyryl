@@ -1,0 +1,41 @@
+{%- comment -%}
+  Extra JSON-LD on top of what jekyll-seo-tag already emits (BlogPosting).
+  - Organization + WebSite: site-wide entity + sameAs social links (knowledge graph).
+  - BreadcrumbList: on article pages, helps Google show breadcrumb rich results.
+  These are additive; do not duplicate the BlogPosting block jekyll-seo-tag produces.
+{%- endcomment -%}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": "{{ site.url }}/#organization",
+      "name": {{ site.title | jsonify }},
+      "url": "{{ site.url }}/",
+      "logo": {
+        "@type": "ImageObject",
+        "url": "{{ site.logo | absolute_url }}"
+      }{% if site.social.links %},
+      "sameAs": {{ site.social.links | jsonify }}{% endif %}
+    },
+    {
+      "@type": "WebSite",
+      "@id": "{{ site.url }}/#website",
+      "name": {{ site.title | jsonify }},
+      "url": "{{ site.url }}/",
+      "description": {{ site.description | strip_newlines | strip | jsonify }},
+      "inLanguage": "en",
+      "publisher": { "@id": "{{ site.url }}/#organization" }
+    }{% if page.layout == "post" %},
+    {
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        { "@type": "ListItem", "position": 1, "name": "Home", "item": "{{ site.url }}/" },
+        { "@type": "ListItem", "position": 2, "name": "Tutorials", "item": "{{ '/tutorials/' | absolute_url }}" },
+        { "@type": "ListItem", "position": 3, "name": {{ page.title | jsonify }}, "item": "{{ page.url | absolute_url }}" }
+      ]
+    }{% endif %}
+  ]
+}
+</script>

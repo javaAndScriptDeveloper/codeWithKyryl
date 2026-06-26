@@ -21,6 +21,17 @@ group :development do
   gem "webrick" # Required for Ruby 3.0+
 end
 
+# Production-only: auto-generates per-post Open Graph share images at build time.
+# Kept OUT of the :jekyll_plugins group on purpose — that group is auto-loaded by
+# Jekyll, and this plugin pulls in ruby-vips which needs libvips at runtime. libvips
+# ships in the Netlify build image but not necessarily on a dev machine, so it's only
+# wired in via _config_production.yml (see netlify.toml). Local `jekyll serve` never
+# loads it. To test OG generation locally: install libvips, then build with
+#   bundle exec jekyll build --config _config.yml,_config_production.yml
+group :production do
+  gem "jekyll-og-image"
+end
+
 # Windows and JRuby specific gems
 platforms :mingw, :x64_mingw, :mswin, :jruby do
   gem "tzinfo", ">= 1", "< 3"

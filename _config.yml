@@ -27,6 +27,31 @@ url: "https://codewithkyryl.com" # the base hostname & protocol for your site
 linkedin_username: kyryl-feshchenko
 telegram_username: notatlast
 
+# Logo for Organization schema / rich results (used by jekyll-seo-tag + jekyll-og-image)
+logo: /assets/img/logo.png
+
+# Twitter / X card config (jekyll-seo-tag). Uncomment + set username if you have a handle.
+twitter:
+  # username: yourhandle
+  card: summary_large_image
+
+# Drives Person/Organization `sameAs` in jekyll-seo-tag's JSON-LD
+social:
+  name: Kyryl Feshchenko
+  links:
+    - https://www.linkedin.com/in/kyryl-feshchenko
+    - https://t.me/notatlast
+
+# Search engine ownership verification (jekyll-seo-tag renders these as meta tags).
+# Paste the codes from Google Search Console / Bing Webmaster Tools, then uncomment.
+# Works on any host incl. Netlify. Bing matters because ChatGPT search is Bing-backed.
+# Google verified via DNS TXT (Domain property) — no meta tag needed.
+# Only uncomment below if you switch to URL-prefix + HTML-tag verification,
+# and use ONLY the code (no "google-site-verification=" prefix).
+# webmaster_verifications:
+#   google: PASTE_GOOGLE_CODE_HERE
+#   bing: PASTE_BING_CODE_HERE
+
 # Build settings
 theme: minima
 highlighter: rouge

@@ -4,6 +4,18 @@ title: "The Transactional Outbox Pattern: From a Single Task to a Production-Gra
 date: 2026-06-07
 tags: [pattern, postgres, spring-boot, java]
 excerpt: "How to build a reliable async task execution engine on top of PostgreSQL and Spring Boot — from a basic single-type outbox to a multi-type dispatcher with retries, heartbeats, ordering guarantees, and production monitoring."
+description: "A practical, production-grade guide to the Transactional Outbox Pattern in Java and Spring Boot on PostgreSQL: solving the dual-write problem, polling with FOR UPDATE SKIP LOCKED, retries, heartbeats, ordering, and monitoring."
+faq:
+  - question: "What is the Transactional Outbox Pattern?"
+    answer: "The Transactional Outbox Pattern solves the dual-write problem by writing a task row into the **same database transaction** as your domain change instead of calling an external system directly. A background worker then reads the outbox table and executes the task. Because the domain write and the task write commit atomically, the task can never be lost even if the external call or the app crashes."
+  - question: "What problem does the outbox pattern solve?"
+    answer: "It solves the **dual-write problem**: when an operation must both update the database and call an external system (publish an event, send an email, call an API), there is no shared transaction across the two. If one succeeds and the other fails you get inconsistent state. The outbox makes the second action part of the database transaction, so they succeed or fail together."
+  - question: "Do I need Kafka or a message broker to use the outbox pattern?"
+    answer: "No. The outbox pattern works with just a relational database. A scheduled worker can poll the outbox table directly using `SELECT ... FOR UPDATE SKIP LOCKED`. A broker like Kafka is optional — you can publish from the outbox, but PostgreSQL alone is enough for reliable async execution."
+  - question: "How do multiple workers avoid processing the same outbox row?"
+    answer: "Use `SELECT ... FOR UPDATE SKIP LOCKED` when claiming rows. Each worker locks the rows it picks and `SKIP LOCKED` makes other workers skip already-locked rows instead of blocking, so multiple instances can poll the same table concurrently without double-processing."
+  - question: "How do you handle failed tasks and retries in an outbox?"
+    answer: "Give each task a state machine (PENDING → PROCESSING → COMPLETED/FAILED), a retry counter, and a `next_attempt_at` timestamp for exponential backoff. A heartbeat / lease timestamp lets you reclaim tasks orphaned by a crashed worker, and a max-retry threshold moves poison messages to a dead-letter state for manual inspection."
 ---
 
 # The Transactional Outbox Pattern: From a Single Task to a Production-Grade Async Engine
@@ -30,6 +42,15 @@ step by step from the simplest possible outbox to something I'd be comfortable r
 production. Every code snippet is from a real working repo linked at the end.
 
 Stack: **Java, Spring Boot, PostgreSQL**.
+
+<div class="post-tldr" markdown="1">
+<p class="post-tldr-title">TL;DR</p>
+
+- The **Transactional Outbox Pattern** fixes the dual-write problem by writing a task row in the **same DB transaction** as your domain change, then executing it from a background worker.
+- Poll the outbox table with `SELECT ... FOR UPDATE SKIP LOCKED` so multiple workers can run concurrently without double-processing.
+- Production-grade requires more than the basic idea: a **state machine**, **retries with backoff**, **heartbeats/leases** to recover crashed workers, **ordering** guarantees, and **monitoring** of queue depth.
+- You don't need Kafka — **PostgreSQL alone** is enough for reliable async execution.
+</div>
 
 ---
 

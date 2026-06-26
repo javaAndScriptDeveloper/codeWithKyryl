@@ -1,6 +1,8 @@
 [build]
-  command = "bundle exec jekyll build"
+  # Layer the production config so per-post OG images (jekyll-og-image) are generated.
+  command = "bundle exec jekyll build --config _config.yml,_config_production.yml"
   publish = "_site"
 
 [build.environment]
   RUBY_VERSION = "3.2.0"
+  JEKYLL_ENV = "production"

@@ -1,0 +1,47 @@
+# Production-only overrides, layered on top of _config.yml on Netlify:
+#   bundle exec jekyll build --config _config.yml,_config_production.yml
+#
+# Why separate: jekyll-og-image needs libvips at runtime (present in the Netlify build
+# image, not guaranteed locally). Keeping it here means local `jekyll serve` never tries
+# to load it. NOTE: Jekyll REPLACES the `plugins:` array from later configs, so the full
+# list is repeated here with jekyll-og-image appended.
+plugins:
+  - jekyll-feed
+  - jekyll-seo-tag
+  - jekyll-sitemap
+  - jekyll-og-image
+
+# Per-post Open Graph images. The plugin writes PNGs to assets/og/ and auto-injects
+# og:image + twitter:image; jekyll-seo-tag then upgrades the card to summary_large_image.
+og_image:
+  collections: ["articles"]
+  output_dir: "assets/og"
+  force: false
+  verbose: true
+  domain: "codewithkyryl.com"
+  canvas:
+    background_color: "#0F6E56"
+    width: 1200
+    height: 630
+  header:
+    font_family: "DejaVu Sans, Bold"
+    color: "#FFFFFF"
+  content:
+    font_family: "DejaVu Sans, Regular"
+    color: "#A7F3D0"
+  border_bottom:
+    width: 20
+    fill:
+      - "#1D9E75"
+  image:
+    path: "assets/img/logo.png"
+    width: 120
+    height: 120
+    position:
+      x: 80
+      y: 80
+    gravity: "ne"
+  metadata:
+    fields: ["date", "tags"]
+    separator: " • "
+    date_format: "%B %d, %Y"

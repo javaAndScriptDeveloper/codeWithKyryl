@@ -1,0 +1,25 @@
+---
+layout: null
+sitemap: false
+permalink: /llms.txt
+---
+# {{ site.title }}
+
+> {{ site.description | strip_newlines | strip }}
+
+Author: {{ site.author }} — backend engineer writing senior-level deep dives on Java,
+Spring Boot, Apache Kafka, PostgreSQL, and distributed-systems patterns. Articles are
+hands-on, production-focused, and built around real working code.
+
+## Articles
+{% assign sorted = site.articles | sort: "date" | reverse %}{% for post in sorted %}
+- [{{ post.title }}]({{ post.url | absolute_url }}): {{ post.excerpt | default: post.description | strip_html | strip_newlines | truncate: 200 }}{% endfor %}
+
+## Practice quizzes
+{% assign quizzes = site.data.quizzes | sort %}{% for item in quizzes %}{% assign q = item[1] %}
+- [{{ q.title }} quiz]({{ '/quizzes/' | absolute_url }}{{ q.slug }}/): {{ q.description | strip_newlines | strip }}{% endfor %}
+
+## More
+- [All tutorials]({{ '/tutorials/' | absolute_url }})
+- [All quizzes]({{ '/quizzes/' | absolute_url }})
+- [RSS feed]({{ '/feed.xml' | absolute_url }})

@@ -5,8 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% if page.title %}{{ page.title }} | {% endif %}{{ site.title | default: "CodeWithKyryl" }}</title>
 
-    <!-- SEO Meta Tags -->
+    <!-- SEO Meta Tags (title, description, canonical, Open Graph, Twitter card,
+         JSON-LD, webmaster verifications, twitter:image — all from jekyll-seo-tag) -->
     {% seo %}
+
+    <!-- Extra structured data: Organization, WebSite, breadcrumbs -->
+    {% include structured-data.html %}
+
+    <!-- Favicons & PWA -->
+    <link rel="icon" href="{{ '/favicon.ico' | relative_url }}" sizes="any">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ '/assets/img/favicon-32x32.png' | relative_url }}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ '/assets/img/favicon-16x16.png' | relative_url }}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ '/assets/img/apple-touch-icon.png' | relative_url }}">
+    <link rel="manifest" href="{{ '/site.webmanifest' | relative_url }}">
+    <meta name="theme-color" content="#1D9E75">
 
     <!-- Fonts & Icons -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">

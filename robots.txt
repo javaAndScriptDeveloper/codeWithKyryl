@@ -1,0 +1,42 @@
+---
+# Processed by Jekyll so the sitemap URL stays absolute. Overrides the
+# auto-generated robots.txt from jekyll-sitemap.
+layout: null
+sitemap: false
+---
+# Allow everything for normal search engines (Google, Bing, etc.)
+User-agent: *
+Allow: /
+
+# Explicitly welcome AI answer engines so they may crawl and cite the content.
+# OpenAI (ChatGPT)
+User-agent: GPTBot
+Allow: /
+User-agent: OAI-SearchBot
+Allow: /
+User-agent: ChatGPT-User
+Allow: /
+
+# Anthropic (Claude)
+User-agent: ClaudeBot
+Allow: /
+User-agent: anthropic-ai
+Allow: /
+User-agent: Claude-SearchBot
+Allow: /
+User-agent: Claude-User
+Allow: /
+
+# Perplexity
+User-agent: PerplexityBot
+Allow: /
+
+# Google Gemini / AI training
+User-agent: Google-Extended
+Allow: /
+
+# Apple
+User-agent: Applebot-Extended
+Allow: /
+
+Sitemap: {{ '/sitemap.xml' | absolute_url }}
