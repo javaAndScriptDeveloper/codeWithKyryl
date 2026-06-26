@@ -439,7 +439,13 @@
     background: linear-gradient(135deg, #e6f7f2, #d3f0e6);
 }
 
-/* Row 1 = topic tags (same as posts); row 2 = Quiz + difficulty badges */
+/* Row 1 = topic tags (same as posts), packed left-to-right */
+.post-meta--quiz-tags {
+    justify-content: flex-start;
+    gap: 0.5rem;
+}
+
+/* Row 2 = Quiz + difficulty badges */
 .post-meta--quiz.quiz-badges-row {
     justify-content: flex-start;
     gap: 0.5rem;

@@ -61,9 +61,9 @@ css:
                 </div>
                 <div class="post-content">
                     {% if quiz.tags and quiz.tags.size > 0 %}
-                    <div class="post-meta">
+                    <div class="post-meta post-meta--quiz-tags">
                         {% for tag in quiz.tags %}
-                        <span class="post-tag">{{ tag }}</span>{% unless forloop.last %} {% endunless %}
+                        <span class="post-tag">{{ tag }}</span>
                         {% endfor %}
                     </div>
                     {% endif %}
