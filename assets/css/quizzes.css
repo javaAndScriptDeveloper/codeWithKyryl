@@ -94,12 +94,12 @@ main {
 }
 
 .filter-group-label {
-    font-size: 0.72rem;
+    font-size: 0.9rem;
     text-transform: uppercase;
-    letter-spacing: 0.06em;
-    font-weight: 700;
-    color: var(--color-text-muted);
-    min-width: 3.2rem;
+    letter-spacing: 0.04em;
+    font-weight: 800;
+    color: var(--color-text-body);
+    min-width: 3.5rem;
 }
 
 .level-filter,
@@ -126,20 +126,22 @@ main {
     color: #fff;
 }
 
-.level-btn.level-junior.active {
-    background: var(--quiz-success-bg);
-    color: var(--color-primary-dark);
-    border-color: var(--color-primary);
+/* Level filter buttons mirror the card difficulty badges: always level-
+   colored with a signal icon, dimmed until selected. (.filter-btn.level-btn
+   specificity beats tutorials' .filter-btn:hover so the colors survive hover.) */
+.filter-btn.level-btn {
+    opacity: 0.45;
+    border-color: transparent;
 }
-.level-btn.level-middle.active {
-    background: var(--color-primary);
-    border-color: var(--color-primary);
-    color: #fff;
-}
-.level-btn.level-senior.active {
-    background: var(--color-primary-dark);
-    border-color: var(--color-primary-dark);
-    color: #fff;
+.filter-btn.level-btn i { font-size: 0.7em; }
+.filter-btn.level-btn.level-junior { background: #cdeee1; color: var(--color-primary-dark); }
+.filter-btn.level-btn.level-middle { background: var(--color-primary); color: #fff; }
+.filter-btn.level-btn.level-senior { background: var(--color-primary-dark); color: #fff; }
+.filter-btn.level-btn:hover { opacity: 0.8; }
+.filter-btn.level-btn.active {
+    opacity: 1;
+    font-weight: 700;
+    box-shadow: 0 0 0 2px rgba(29, 158, 117, 0.35);
 }
 
 /* ---- Quiz page shell -------------------------------------------------- */
