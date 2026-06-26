@@ -62,11 +62,26 @@ main {
     margin: 2px 0 14px;
 }
 
-/* Difficulty stands out from topic tags in the chip row */
+/* Difficulty is a FILLED badge with a level icon; topic tags are OUTLINED
+   ghosts. Distinction is by shape/treatment, so the green scheme stays intact. */
 .tag-chip-difficulty {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
     background: var(--color-primary);
     color: #fff;
-    border-color: var(--color-primary);
+    border: 1px solid var(--color-primary);
+}
+
+.tag-chip-difficulty i {
+    font-size: 0.7em;
+}
+
+/* Topic tags on quiz cards: outlined/ghost, clearly secondary to the badge */
+#quizzes-container .tag-chip:not(.tag-chip-difficulty) {
+    background: transparent;
+    color: var(--color-text-muted);
+    border: 1px solid var(--color-border);
 }
 
 /* ---- Filter groups (Level = OR, Topic = AND) -------------------------- */
@@ -96,9 +111,9 @@ main {
 
 /* Levels as a brand-green intensity ramp: light -> dark = easy -> hard */
 .tag-chip-difficulty.level-junior {
-    background: var(--quiz-success-bg);
+    background: #cdeee1;
     color: var(--color-primary-dark);
-    border-color: var(--color-primary);
+    border-color: #cdeee1;
 }
 .tag-chip-difficulty.level-middle {
     background: var(--color-primary);

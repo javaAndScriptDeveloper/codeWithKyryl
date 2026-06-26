@@ -93,7 +93,7 @@ js:
                 </div>
                 <div class="post-content">
                     <div class="post-tags">
-                        {% if quiz.difficulty %}<span class="tag-chip tag-chip-difficulty level-{{ quiz.difficulty | downcase }}">{{ quiz.difficulty }}</span>{% endif %}
+                        {% if quiz.difficulty %}<span class="tag-chip tag-chip-difficulty level-{{ quiz.difficulty | downcase }}"><i class="fas fa-signal"></i>{{ quiz.difficulty }}</span>{% endif %}
                         {% for tag in quiz.tags %}
                         <span class="tag-chip">{{ tag }}</span>
                         {% endfor %}
