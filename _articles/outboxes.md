@@ -4,7 +4,7 @@ title: "The Transactional Outbox Pattern: From a Single Task to a Production-Gra
 date: 2026-06-07
 tags: [pattern, postgres, spring-boot, java]
 excerpt: "How to build a reliable async task execution engine on top of PostgreSQL and Spring Boot — from a basic single-type outbox to a multi-type dispatcher with retries, heartbeats, ordering guarantees, and production monitoring."
-description: "A practical, production-grade guide to the Transactional Outbox Pattern in Java and Spring Boot on PostgreSQL: solving the dual-write problem, polling with FOR UPDATE SKIP LOCKED, retries, heartbeats, ordering, and monitoring."
+description: "A practical guide to the Transactional Outbox Pattern in Java, Spring Boot and PostgreSQL — solving the dual-write problem with reliable async task execution."
 faq:
   - question: "What is the Transactional Outbox Pattern?"
     answer: "The Transactional Outbox Pattern solves the dual-write problem by writing a task row into the **same database transaction** as your domain change instead of calling an external system directly. A background worker then reads the outbox table and executes the task. Because the domain write and the task write commit atomically, the task can never be lost even if the external call or the app crashes."
