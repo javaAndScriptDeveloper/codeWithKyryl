@@ -15,9 +15,10 @@ hands-on, production-focused, and built around real working code.
 {% assign sorted = site.articles | sort: "date" | reverse %}{% for post in sorted %}
 - [{{ post.title }}]({{ post.url | absolute_url }}): {{ post.excerpt | default: post.description | strip_html | strip_newlines | truncate: 200 }}{% endfor %}
 
-## Practice quizzes
+{% if site.data.quizzes %}## Practice quizzes
 {% assign quizzes = site.data.quizzes | sort %}{% for item in quizzes %}{% assign q = item[1] %}
 - [{{ q.title }} quiz]({{ '/quizzes/' | absolute_url }}{{ q.slug }}/): {{ q.description | strip_newlines | strip }}{% endfor %}
+{% endif %}
 
 ## More
 - [All tutorials]({{ '/tutorials/' | absolute_url }})
