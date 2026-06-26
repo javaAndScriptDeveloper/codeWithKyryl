@@ -18,7 +18,7 @@ og_image:
   output_dir: "assets/og"
   force: false
   verbose: true
-  domain: "codewithkyryl.com"
+  domain: "codewithkyryl.dev"
   canvas:
     background_color: "#0F6E56"
     width: 1200

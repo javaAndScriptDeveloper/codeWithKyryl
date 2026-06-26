@@ -23,7 +23,7 @@ email: fkirill440@gmail.com
 description: >-
   Dive into the world of modern backend development with a focus on Spring Boot, Apache Kafka, PostgreSQL, CI/CD pipelines, and microservices architecture. Explore tutorials, guides, and deep dives tailored for developers building scalable, resilient, and production-ready systems.
 baseurl: "" # the subpath of your site, e.g. /blog
-url: "https://codewithkyryl.com" # the base hostname & protocol for your site
+url: "https://codewithkyryl.dev" # the base hostname & protocol for your site
 linkedin_username: kyryl-feshchenko
 telegram_username: notatlast
 

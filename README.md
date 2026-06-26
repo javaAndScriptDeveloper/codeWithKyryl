@@ -1,6 +1,6 @@
 # CodeWithKyryl
 
-Personal tech blog at **[codewithkyryl.com](https://codewithkyryl.com)** — writing about Java, Spring Boot, PostgreSQL, and microservices.
+Personal tech blog at **[codewithkyryl.dev](https://codewithkyryl.dev)** — writing about Java, Spring Boot, PostgreSQL, and microservices.
 
 Built with Jekyll, hosted on Netlify.
 
