@@ -8,7 +8,7 @@ title: "Apache Kafka — Fundamentals"
 subtitle: "The basics: topics, partitions, producers, consumers & offsets"
 description: "10 entry-level questions on Apache Kafka fundamentals — topics, partitions, consumer groups, offsets and retention. Each answer comes with a short explanation."
 difficulty: "Junior"
-tags: ["Kafka", "Streaming", "Fundamentals"]
+tags: ["Kafka", "Streaming"]
 order: 1
 questions:
   - id: 1

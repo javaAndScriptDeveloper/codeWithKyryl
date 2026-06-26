@@ -8,7 +8,7 @@ title: "Apache Kafka — Deep Dive"
 subtitle: "ISR, EOS, rebalancing, compaction & the traps that bite in production"
 description: "10 hard questions on Apache Kafka internals for senior engineers — ISR and acks, exactly-once semantics, transactions, log compaction, rebalancing and ordering guarantees. Explanation after every answer."
 difficulty: "Senior"
-tags: ["Kafka", "Streaming", "Internals"]
+tags: ["Kafka", "Streaming"]
 order: 3
 questions:
   - id: 1
