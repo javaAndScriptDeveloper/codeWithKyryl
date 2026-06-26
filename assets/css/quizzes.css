@@ -94,14 +94,38 @@ main {
     flex-wrap: wrap;
 }
 
-/* Level colors: Junior = green, Middle = amber, Senior = red */
-.tag-chip-difficulty.level-junior { background: #1D9E75; border-color: #1D9E75; }
-.tag-chip-difficulty.level-middle { background: #d97706; border-color: #d97706; }
-.tag-chip-difficulty.level-senior { background: #dc2626; border-color: #dc2626; }
+/* Levels as a brand-green intensity ramp: light -> dark = easy -> hard */
+.tag-chip-difficulty.level-junior {
+    background: var(--quiz-success-bg);
+    color: var(--color-primary-dark);
+    border-color: var(--color-primary);
+}
+.tag-chip-difficulty.level-middle {
+    background: var(--color-primary);
+    border-color: var(--color-primary);
+    color: #fff;
+}
+.tag-chip-difficulty.level-senior {
+    background: var(--color-primary-dark);
+    border-color: var(--color-primary-dark);
+    color: #fff;
+}
 
-.level-btn.level-junior.active { background: #1D9E75; border-color: #1D9E75; color: #fff; }
-.level-btn.level-middle.active { background: #d97706; border-color: #d97706; color: #fff; }
-.level-btn.level-senior.active { background: #dc2626; border-color: #dc2626; color: #fff; }
+.level-btn.level-junior.active {
+    background: var(--quiz-success-bg);
+    color: var(--color-primary-dark);
+    border-color: var(--color-primary);
+}
+.level-btn.level-middle.active {
+    background: var(--color-primary);
+    border-color: var(--color-primary);
+    color: #fff;
+}
+.level-btn.level-senior.active {
+    background: var(--color-primary-dark);
+    border-color: var(--color-primary-dark);
+    color: #fff;
+}
 
 /* ---- Quiz page shell -------------------------------------------------- */
 .quiz-page {
