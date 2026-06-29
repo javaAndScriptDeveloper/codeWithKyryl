@@ -459,3 +459,67 @@ footer {
 }
 
 pre { position: relative; }
+
+/* ── Article badge + reading-time chips (home, articles, post pages) ── */
+.post-meta--badges {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin: 0.5rem 0 0.75rem;
+    padding-top: 0.5rem;
+    border-top: 1px dashed var(--color-border);
+}
+
+.post-tag.post-tag--article {
+    background: var(--color-primary);
+    color: #fff;
+    padding: 0.25rem 0.7rem;
+    border-radius: 20px;
+    font-weight: 600;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.post-readtime {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    color: var(--color-text-muted);
+    font-family: var(--font-body);
+    font-size: 0.8rem;
+    font-weight: 500;
+}
+
+.post-readtime i { font-size: 0.85em; }
+
+/* ── "View all" link under capped home feeds ── */
+.section-cta {
+    display: flex;
+    justify-content: center;
+    margin-top: 2rem;
+}
+
+.view-all-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: var(--color-primary-dark);
+    text-decoration: none;
+    padding: 0.6rem 1.4rem;
+    border: 1px solid var(--color-primary);
+    border-radius: 24px;
+    transition: background 0.2s ease, color 0.2s ease;
+}
+
+.view-all-link:hover {
+    background: var(--color-primary);
+    color: #fff;
+}
+
+.view-all-link i { transition: transform 0.2s ease; }
+.view-all-link:hover i { transform: translateX(3px); }

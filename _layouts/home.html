@@ -37,6 +37,10 @@ css:
                         <span class="post-tag">Tech</span>
                         {% endif %}
                     </div>
+                    <div class="post-meta post-meta--badges">
+                        <span class="post-tag post-tag--article">Article</span>
+                        {% include reading-time.html content=post.content %}
+                    </div>
                     <h3><a href="{{ post.url | relative_url }}">{{ post.title }}</a></h3>
                     {% if post.excerpt %}
                     <p class="post-excerpt">{{ post.excerpt | strip_html | truncatewords: 20 }}</p>
@@ -86,6 +90,13 @@ css:
             </div>
             {% endif %}
         </div>
+        {% if limited_posts.size > 0 %}
+        <div class="section-cta">
+            <a href="{{ '/tutorials' | relative_url }}" class="view-all-link">
+                View all articles <i class="fas fa-arrow-right"></i>
+            </a>
+        </div>
+        {% endif %}
     </div>
 </section>
 

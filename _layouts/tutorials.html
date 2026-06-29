@@ -51,6 +51,10 @@ permalink: /tutorials/
                         <span class="tag-chip">{{ tag }}</span>
                         {% endfor %}
                     </div>
+                    <div class="post-meta post-meta--badges">
+                        <span class="post-tag post-tag--article">Article</span>
+                        {% include reading-time.html content=post.content %}
+                    </div>
                     <h3><a href="{{ post.url | relative_url }}">{{ post.title }}</a></h3>
                     {% if post.excerpt %}
                     <p class="post-excerpt">{{ post.excerpt | strip_html | truncatewords: 20 }}</p>

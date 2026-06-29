@@ -1,0 +1,9 @@
+{%- comment -%}
+Renders a "N min read" chip. Pass the content to measure:
+  {% include reading-time.html content=post.content %}
+Estimate assumes ~200 words/min; minimum 1 min.
+{%- endcomment -%}
+{%- assign _words = include.content | strip_html | number_of_words -%}
+{%- assign _rt = _words | divided_by: 200.0 | ceil -%}
+{%- if _rt < 1 -%}{%- assign _rt = 1 -%}{%- endif -%}
+<span class="post-readtime"><i class="far fa-clock"></i> {{ _rt }} min read</span>
