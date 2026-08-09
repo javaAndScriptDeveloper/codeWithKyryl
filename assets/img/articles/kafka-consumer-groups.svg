@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="650" viewBox="0 0 1200 650" role="img" aria-labelledby="title desc">
+  <title id="title">Shared consumer group versus one consumer group per pod</title>
+  <desc id="desc">With one shared group, Kafka partitions are divided between pods and each pod receives only part of the topic. With a unique group per pod, every pod receives every partition and builds a complete local cache.</desc>
+  <defs>
+    <marker id="green-arrow" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 Z" fill="#1D9E75"/></marker>
+    <marker id="red-arrow" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 Z" fill="#c26855"/></marker>
+    <style>
+      .title{font:700 28px Inter,Arial,sans-serif;fill:#1a1a1a}.phase{font:700 19px Inter,Arial,sans-serif}.heading{font:700 16px Inter,Arial,sans-serif;fill:#1a1a1a}.small{font:500 14px Inter,Arial,sans-serif;fill:#52635d}.tiny{font:700 12px Inter,Arial,sans-serif}.card{fill:#fff;stroke-width:2}.good{stroke:#1D9E75}.bad{stroke:#c26855}.soft-good{fill:#f0fdf8;stroke:#b9e8da}.soft-bad{fill:#fff7f5;stroke:#e7c2ba}.green{fill:none;stroke:#1D9E75;stroke-width:3;marker-end:url(#green-arrow)}.red{fill:none;stroke:#c26855;stroke-width:3;marker-end:url(#red-arrow)}
+    </style>
+  </defs>
+  <rect width="1200" height="650" rx="18" fill="#fbfefc"/>
+  <text x="600" y="46" text-anchor="middle" class="title">Consumer groups decide whether records are split or broadcast</text>
+
+  <rect x="35" y="74" width="545" height="520" rx="16" class="soft-bad"/>
+  <text x="307" y="111" text-anchor="middle" class="phase" fill="#9d3b2e">ONE SHARED GROUP · LOAD-BALANCED</text>
+  <text x="307" y="137" text-anchor="middle" class="small">Wrong when every pod needs the complete cache</text>
+  <rect x="177" y="166" width="260" height="108" rx="14" class="card bad"/>
+  <text x="307" y="200" text-anchor="middle" class="heading">Kafka topic</text>
+  <rect x="207" y="218" width="54" height="34" rx="7" fill="#fde8e4"/><rect x="280" y="218" width="54" height="34" rx="7" fill="#fde8e4"/><rect x="353" y="218" width="54" height="34" rx="7" fill="#fde8e4"/>
+  <text x="234" y="240" text-anchor="middle" class="tiny" fill="#9d3b2e">P0</text><text x="307" y="240" text-anchor="middle" class="tiny" fill="#9d3b2e">P1</text><text x="380" y="240" text-anchor="middle" class="tiny" fill="#9d3b2e">P2</text>
+  <path d="M234 274V337H123" class="red"/><path d="M307 274V337" class="red"/><path d="M380 274V337H491" class="red"/>
+  <g><rect x="55" y="345" width="136" height="122" rx="12" class="card bad"/><text x="123" y="377" text-anchor="middle" class="heading">Pod A</text><text x="123" y="402" text-anchor="middle" class="small">shared group</text><text x="123" y="438" text-anchor="middle" class="tiny" fill="#9d3b2e">ONLY P0</text></g>
+  <g><rect x="239" y="345" width="136" height="122" rx="12" class="card bad"/><text x="307" y="377" text-anchor="middle" class="heading">Pod B</text><text x="307" y="402" text-anchor="middle" class="small">shared group</text><text x="307" y="438" text-anchor="middle" class="tiny" fill="#9d3b2e">ONLY P1</text></g>
+  <g><rect x="423" y="345" width="136" height="122" rx="12" class="card bad"/><text x="491" y="377" text-anchor="middle" class="heading">Pod C</text><text x="491" y="402" text-anchor="middle" class="small">shared group</text><text x="491" y="438" text-anchor="middle" class="tiny" fill="#9d3b2e">ONLY P2</text></g>
+  <rect x="92" y="503" width="430" height="54" rx="10" fill="#9d3b2e"/><text x="307" y="526" text-anchor="middle" style="font:700 14px Inter,Arial,sans-serif;fill:#fff">Each pod sees only part of the state</text><text x="307" y="546" text-anchor="middle" style="font:500 13px Inter,Arial,sans-serif;fill:#fff">Its local cache is incomplete</text>
+
+  <rect x="620" y="74" width="545" height="520" rx="16" class="soft-good"/>
+  <text x="892" y="111" text-anchor="middle" class="phase" fill="#0F6E56">ONE GROUP PER POD · BROADCAST</text>
+  <text x="892" y="137" text-anchor="middle" class="small">Correct for an independent full replica in every pod</text>
+  <rect x="762" y="166" width="260" height="108" rx="14" class="card good"/>
+  <text x="892" y="200" text-anchor="middle" class="heading">Kafka topic</text>
+  <rect x="792" y="218" width="54" height="34" rx="7" fill="#e6f7f2"/><rect x="865" y="218" width="54" height="34" rx="7" fill="#e6f7f2"/><rect x="938" y="218" width="54" height="34" rx="7" fill="#e6f7f2"/>
+  <text x="819" y="240" text-anchor="middle" class="tiny" fill="#0F6E56">P0</text><text x="892" y="240" text-anchor="middle" class="tiny" fill="#0F6E56">P1</text><text x="965" y="240" text-anchor="middle" class="tiny" fill="#0F6E56">P2</text>
+  <path d="M819 274V313H708V337" class="green"/><path d="M892 274V337" class="green"/><path d="M965 274V313H1076V337" class="green"/>
+  <g><rect x="640" y="345" width="136" height="122" rx="12" class="card good"/><text x="708" y="377" text-anchor="middle" class="heading">Pod A</text><text x="708" y="402" text-anchor="middle" class="small">unique group A</text><text x="708" y="438" text-anchor="middle" class="tiny" fill="#0F6E56">P0 + P1 + P2</text></g>
+  <g><rect x="824" y="345" width="136" height="122" rx="12" class="card good"/><text x="892" y="377" text-anchor="middle" class="heading">Pod B</text><text x="892" y="402" text-anchor="middle" class="small">unique group B</text><text x="892" y="438" text-anchor="middle" class="tiny" fill="#0F6E56">P0 + P1 + P2</text></g>
+  <g><rect x="1008" y="345" width="136" height="122" rx="12" class="card good"/><text x="1076" y="377" text-anchor="middle" class="heading">Pod C</text><text x="1076" y="402" text-anchor="middle" class="small">unique group C</text><text x="1076" y="438" text-anchor="middle" class="tiny" fill="#0F6E56">P0 + P1 + P2</text></g>
+  <rect x="677" y="503" width="430" height="54" rx="10" fill="#0F6E56"/><text x="892" y="526" text-anchor="middle" style="font:700 14px Inter,Arial,sans-serif;fill:#fff">Every pod sees the complete state</text><text x="892" y="546" text-anchor="middle" style="font:500 13px Inter,Arial,sans-serif;fill:#fff">Each local cache is independently complete</text>
+  <text x="600" y="628" text-anchor="middle" class="small">The topic is identical in both cases. Only the consumer-group arrangement changes the delivery pattern.</text>
+</svg>

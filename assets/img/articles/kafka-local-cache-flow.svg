@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="620" viewBox="0 0 1200 620" role="img" aria-labelledby="title desc">
+  <title id="title">Kafka distributes configuration to a local cache in every application pod</title>
+  <desc id="desc">A producer publishes keyed updates to a compacted Kafka topic. Three separate consumer groups replay the same topic into independent local caches in Pod A, Pod B, and Pod C.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#1D9E75"/>
+    </marker>
+    <style>
+      .title { font: 700 28px Inter, Arial, sans-serif; fill: #1a1a1a; }
+      .heading { font: 700 18px Inter, Arial, sans-serif; fill: #0F6E56; }
+      .label { font: 600 15px Inter, Arial, sans-serif; fill: #1a1a1a; }
+      .small { font: 500 13px Inter, Arial, sans-serif; fill: #52635d; }
+      .tiny { font: 600 12px Inter, Arial, sans-serif; fill: #0F6E56; }
+      .card { fill: #ffffff; stroke: #1D9E75; stroke-width: 2; }
+      .soft { fill: #f0fdf8; stroke: #b9e8da; stroke-width: 1.5; }
+      .arrow { fill: none; stroke: #1D9E75; stroke-width: 3; marker-end: url(#arrow); }
+    </style>
+  </defs>
+
+  <rect width="1200" height="620" rx="18" fill="#fbfefc"/>
+  <text x="600" y="48" text-anchor="middle" class="title">One Kafka topic, one complete local cache per pod</text>
+
+  <!-- Producer -->
+  <rect x="42" y="205" width="220" height="190" rx="14" class="card"/>
+  <circle cx="152" cy="254" r="25" fill="#1D9E75"/>
+  <path d="M140 254h24M152 242v24" stroke="#fff" stroke-width="4" stroke-linecap="round"/>
+  <text x="152" y="305" text-anchor="middle" class="heading">Config producer</text>
+  <text x="152" y="334" text-anchor="middle" class="small">Publishes keyed updates</text>
+  <rect x="79" y="352" width="146" height="26" rx="13" fill="#e6f7f2"/>
+  <text x="152" y="370" text-anchor="middle" class="tiny">key + value / null</text>
+
+  <!-- Kafka topic -->
+  <path d="M262 300H345" class="arrow"/>
+  <text x="303" y="283" text-anchor="middle" class="tiny">PUBLISH</text>
+  <rect x="352" y="143" width="300" height="314" rx="16" class="card"/>
+  <text x="502" y="181" text-anchor="middle" class="heading">Compacted Kafka topic</text>
+  <text x="502" y="205" text-anchor="middle" class="small">Durable latest state per key</text>
+
+  <rect x="386" y="230" width="232" height="48" rx="8" class="soft"/>
+  <text x="402" y="250" class="tiny">feature.dark-mode</text>
+  <text x="602" y="260" text-anchor="end" class="label">enabled</text>
+  <rect x="386" y="292" width="232" height="48" rx="8" class="soft"/>
+  <text x="402" y="312" class="tiny">region.eu-pricing</text>
+  <text x="602" y="322" text-anchor="end" class="label">standard</text>
+  <rect x="386" y="354" width="232" height="48" rx="8" class="soft"/>
+  <text x="402" y="374" class="tiny">feature.old-banner</text>
+  <text x="602" y="384" text-anchor="end" class="label">null</text>
+  <text x="502" y="430" text-anchor="middle" class="small">null is a delete tombstone</text>
+
+  <!-- Fan-out -->
+  <path d="M652 300H700V142H748" class="arrow"/>
+  <path d="M652 300H748" class="arrow"/>
+  <path d="M652 300H700V458H748" class="arrow"/>
+  <text x="700" y="282" text-anchor="middle" class="tiny">REPLAY ALL RECORDS</text>
+
+  <!-- Pods -->
+  <g>
+    <rect x="755" y="75" width="400" height="134" rx="14" class="card"/>
+    <rect x="777" y="96" width="92" height="92" rx="10" fill="#e6f7f2" stroke="#1D9E75"/>
+    <text x="823" y="130" text-anchor="middle" class="heading">Pod A</text>
+    <text x="823" y="155" text-anchor="middle" class="tiny">group A</text>
+    <text x="895" y="116" class="heading">Local cache</text>
+    <text x="895" y="144" class="small">dark-mode → enabled</text>
+    <text x="895" y="167" class="small">eu-pricing → standard</text>
+    <text x="895" y="190" class="small">old-banner → removed</text>
+  </g>
+  <g>
+    <rect x="755" y="233" width="400" height="134" rx="14" class="card"/>
+    <rect x="777" y="254" width="92" height="92" rx="10" fill="#e6f7f2" stroke="#1D9E75"/>
+    <text x="823" y="288" text-anchor="middle" class="heading">Pod B</text>
+    <text x="823" y="313" text-anchor="middle" class="tiny">group B</text>
+    <text x="895" y="274" class="heading">Local cache</text>
+    <text x="895" y="302" class="small">dark-mode → enabled</text>
+    <text x="895" y="325" class="small">eu-pricing → standard</text>
+    <text x="895" y="348" class="small">old-banner → removed</text>
+  </g>
+  <g>
+    <rect x="755" y="391" width="400" height="134" rx="14" class="card"/>
+    <rect x="777" y="412" width="92" height="92" rx="10" fill="#e6f7f2" stroke="#1D9E75"/>
+    <text x="823" y="446" text-anchor="middle" class="heading">Pod C</text>
+    <text x="823" y="471" text-anchor="middle" class="tiny">group C</text>
+    <text x="895" y="432" class="heading">Local cache</text>
+    <text x="895" y="460" class="small">dark-mode → enabled</text>
+    <text x="895" y="483" class="small">eu-pricing → standard</text>
+    <text x="895" y="506" class="small">old-banner → removed</text>
+  </g>
+
+  <rect x="352" y="555" width="803" height="42" rx="10" fill="#0F6E56"/>
+  <text x="753" y="582" text-anchor="middle" style="font: 700 15px Inter, Arial, sans-serif; fill: #fff;">Requests read from each pod's own memory — no Kafka or Redis call on the read path</text>
+</svg>
