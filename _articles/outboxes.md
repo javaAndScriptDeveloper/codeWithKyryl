@@ -269,10 +269,11 @@ Much cleaner. Now the repository reads like intent, not plumbing:
 Optional<ReportGenerationEntity> findFirstByStateOrderByCreatedAt(TaskState state);
 ```
 
-The lock must be held for the entire duration of processing. That means wrapping the whole
-fetch-execute-update cycle in a single transaction:
+You *can* keep the lock while processing by wrapping the whole fetch-execute-update cycle in a
+single transaction, but you generally should not:
 
 ```java
+// Technically works, but do not use this pattern for outbox processing.
 @Transactional
 public void fetchAndProcess() {
     repository.findFirstByStateOrderByCreatedAt(TaskState.PENDING)
@@ -309,10 +310,14 @@ sequenceDiagram
     Note over DB: task row: COMPLETED (unlocked)
 ```
 
-This approach is clean and safe. One drawback: the database row stays locked for as long as
-`generateReport()` runs. For a fast operation this is fine. For something that takes 30 seconds
-or more, long-held locks put pressure on the DB — connection pool exhaustion, lock wait timeouts,
-and degraded throughput under load. We'll address this in the next section.
+Even if `generateReport()` is small enough that this technically works, running an outbox action
+under an open transaction is an antipattern. Transaction duration should not depend on outbox
+execution duration: the action can become slower over time, block on I/O, or call a downstream
+service, leaving a database connection and row lock held for an unpredictable period.
+
+Instead, claim the row in a short transaction by moving it to `PROCESSING`, commit and release the
+lock, and only then execute the outbox action. Record `COMPLETED` or `FAILED` in another short
+transaction afterward. The next section implements that state transition and its recovery path.
 
 ---
 
@@ -458,11 +463,14 @@ stateDiagram-v2
     COMPLETED --> [*]: cleanup job removes\nafter retention period
 ```
 
-The problem with the locked-transaction approach is that it holds a database lock for the entire
+Outbox actions should not run under an open database transaction. The locked-transaction approach
+holds a database lock for the entire
 duration of `generateReport()`. For a report that takes two minutes, that's two minutes of a
 locked row — a connection tied up, other DB operations potentially queuing behind it. With
 `SKIP LOCKED` workers don't block each other on the lock, but long-running transactions still
-put pressure on the connection pool and make the database unhappy under load.
+put pressure on the connection pool and make the database unhappy under load. A very small action
+may technically complete without causing visible trouble, but coupling transaction duration to
+outbox execution duration is still an antipattern.
 
 The fix is to separate claiming a task from executing it. Flip the task to `PROCESSING` in a
 short transaction, release the lock, then do the actual work outside any transaction. This way
