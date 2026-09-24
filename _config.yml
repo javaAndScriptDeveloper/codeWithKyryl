@@ -107,6 +107,9 @@ exclude:
   - vendor/ruby/
   - scripts/
   - tests/
+  - openspec/
+  - README.md
+  - netlify.toml
 #
 # exclude:
 #   - .sass-cache/
