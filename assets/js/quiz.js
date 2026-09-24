@@ -295,10 +295,32 @@ document.addEventListener('DOMContentLoaded', function () {
                 <button type="button" class="btn-secondary" data-action="review"><i class="fas fa-list-check"></i> Review ${escapeHtml(vocabulary.plural)}</button>
                 <a class="btn-secondary" href="${practiceUrl()}"><i class="fas fa-grip"></i> All practice</a>
             </div>
+            <div class="quiz-share" id="quiz-share"></div>
         </div><div id="quiz-review" hidden></div>`;
 
         resultElement.hidden = false;
+        mountShareCard(verdict);
         root.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function mountShareCard(verdict) {
+        const container = document.getElementById('quiz-share');
+        if (!container || !window.ShareCard) return;
+        const label = [root.dataset.formatLabel || practice.format_label, practice.difficulty].filter(Boolean).join(' · ');
+        window.ShareCard.mount(container, {
+            slug: slug,
+            title: practice.title,
+            label: label,
+            score: score,
+            total: questions.length,
+            verdict: verdict,
+            url: canonicalUrl()
+        }, { track: track });
+    }
+
+    function canonicalUrl() {
+        const canonical = document.querySelector('link[rel="canonical"]');
+        return (canonical && canonical.href) || window.location.href;
     }
 
     function practiceUrl() {

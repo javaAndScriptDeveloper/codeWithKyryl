@@ -106,6 +106,7 @@ exclude:
   - vendor/gems/
   - vendor/ruby/
   - scripts/
+  - tests/
 #
 # exclude:
 #   - .sass-cache/

@@ -1,0 +1,87 @@
+/* Share panel under quiz and lab results (assets/js/share-card.js). */
+.share-card {
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+    margin-top: 1.6rem;
+    padding: 1rem;
+    border: 1px solid var(--color-border);
+    border-radius: 14px;
+    background: var(--color-bg-page);
+    text-align: left;
+}
+
+.share-card-preview {
+    flex: 0 0 auto;
+    width: 160px;
+    height: 160px;
+    border-radius: 10px;
+    box-shadow: 0 6px 18px rgba(17, 24, 39, 0.18);
+}
+
+.share-card-body {
+    min-width: 0;
+}
+
+.share-card-title {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 0.95rem;
+    color: var(--color-text-body);
+}
+
+.share-card-title .fa-linkedin {
+    color: #0A66C2;
+}
+
+.share-card-hint {
+    margin: 0.3rem 0 0.8rem;
+    font-size: 0.82rem;
+    color: var(--color-text-muted);
+}
+
+.share-card-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.share-card-actions .btn-primary,
+.share-card-actions .btn-secondary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 8px 14px;
+    font-size: 0.75rem;
+}
+
+.share-card-actions [disabled] {
+    opacity: 0.55;
+    cursor: progress;
+}
+
+.share-card-status {
+    display: block;
+    min-height: 1.4em;
+    margin-top: 0.5rem;
+    font-size: 0.76rem;
+    color: var(--color-primary-dark);
+}
+
+@media (max-width: 640px) {
+    .share-card {
+        flex-direction: column;
+        align-items: stretch;
+        text-align: center;
+    }
+
+    .share-card-preview {
+        align-self: center;
+    }
+
+    .share-card-title,
+    .share-card-actions {
+        justify-content: center;
+    }
+}

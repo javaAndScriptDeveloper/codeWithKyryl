@@ -211,7 +211,6 @@
         const action = event.target.closest('[data-action]');
         if (!action) return;
         if (action.dataset.action === 'retry') restart();
-        if (action.dataset.action === 'share') shareResult(action);
     });
 
     document.addEventListener('keydown', function (event) {
@@ -403,11 +402,10 @@
                     <h2>${escapeHtml(rank)}</h2>
                     <p>You stabilized ${state.score} of ${total} systems on the first call. ${escapeHtml(diagnosis)}</p>
                     <div class="result-actions">
-                        <button type="button" class="btn-primary" data-action="share"><i class="fas fa-share-nodes"></i> Share result</button>
-                        <button type="button" class="btn-secondary" data-action="retry"><i class="fas fa-rotate-right"></i> Run again</button>
+                        <button type="button" class="btn-primary" data-action="retry"><i class="fas fa-rotate-right"></i> Run again</button>
                         <a class="btn-secondary" href="${escapeHtml(root.dataset.articleUrl)}">Read the deep dive</a>
                     </div>
-                    <span class="result-share-status" id="result-share-status" aria-live="polite"></span>
+                    <div class="result-share" id="result-share"></div>
                 </div>
             </div>
             <div class="result-breakdown">
@@ -420,7 +418,27 @@
                     </div>`;
                 }).join('')}
             </div>`;
+        mountShareCard(rank);
         elements.result.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function mountShareCard(rank) {
+        const container = document.getElementById('result-share');
+        if (!container || !window.ShareCard) return;
+        const canonical = document.querySelector('link[rel="canonical"]');
+        window.ShareCard.mount(container, {
+            slug: 'kafka-local-cache-lab',
+            title: 'Kafka Local Cache Incident Lab',
+            label: 'Production Lab · Middle',
+            score: state.score,
+            total: incidents.length,
+            verdict: rank,
+            url: (canonical && canonical.href) || window.location.href
+        }, {
+            track: function (eventName, properties) {
+                track(eventName, Object.assign({ lab: 'kafka_local_cache' }, properties));
+            }
+        });
     }
 
     function restart() {
@@ -430,26 +448,6 @@
         saveState();
         track('lab_restarted', { lab: 'kafka_local_cache', best_score: best });
         renderIncident(true);
-    }
-
-    async function shareResult(button) {
-        const text = `I stabilized ${state.score}/${incidents.length} incidents in the Kafka Local Cache Production Lab.`;
-        const shareData = { title: 'Kafka Local Cache Incident Lab', text: text, url: window.location.href };
-        const status = document.getElementById('result-share-status');
-        try {
-            if (navigator.share) {
-                await navigator.share(shareData);
-                if (status) status.textContent = 'Result shared.';
-            } else {
-                await navigator.clipboard.writeText(`${text} ${window.location.href}`);
-                if (status) status.textContent = 'Result copied to your clipboard.';
-            }
-            track('lab_shared', { lab: 'kafka_local_cache', score: state.score });
-        } catch (error) {
-            if (error && error.name === 'AbortError') return;
-            if (status) status.textContent = 'Copy this page URL to share your result.';
-        }
-        if (button) button.focus();
     }
 
     function updateProgress(percent) {
