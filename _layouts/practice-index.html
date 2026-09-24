@@ -1,0 +1,155 @@
+---
+layout: default
+css:
+  - /assets/css/practice.css
+js:
+  - /assets/js/practice.js
+---
+
+{% assign quick_quiz = site.data.quizzes.kafka-junior %}
+{% assign scenario_drill = site.data.quizzes.kafka %}
+{% assign production_lab = site.data.quizzes.kafka-senior %}
+
+<section class="practice-hero">
+    <div class="container">
+        <span class="practice-eyebrow"><i class="fas fa-terminal"></i> Active backend training</span>
+        <h1>Practice decisions, not definitions.</h1>
+        <p>Start with recall, move through isolated scenarios, then handle connected production incidents. Every answer explains what the system actually does.</p>
+        <div class="practice-summary" aria-label="Available practice">
+            <span><strong>4</strong> practice sets</span>
+            <span><strong>36</strong> decisions</span>
+            <span><strong>3</strong> formats</span>
+            <span>No account required</span>
+        </div>
+    </div>
+</section>
+
+<section class="practice-path" aria-labelledby="practice-path-title">
+    <div class="container">
+        <div class="practice-section-heading">
+            <span>Choose your depth</span>
+            <h2 id="practice-path-title">One learning path, three kinds of practice</h2>
+        </div>
+        <div class="practice-path-grid">
+            <div class="practice-path-step">
+                <span class="practice-path-number">01</span>
+                <i class="fas fa-bolt"></i>
+                <div><strong>Quick Quiz</strong><p>Fast recall to verify the mental model.</p></div>
+            </div>
+            <div class="practice-path-arrow"><i class="fas fa-arrow-right"></i></div>
+            <div class="practice-path-step">
+                <span class="practice-path-number">02</span>
+                <i class="fas fa-shuffle"></i>
+                <div><strong>Scenario Drill</strong><p>Predict behavior from a focused configuration.</p></div>
+            </div>
+            <div class="practice-path-arrow"><i class="fas fa-arrow-right"></i></div>
+            <div class="practice-path-step">
+                <span class="practice-path-number">03</span>
+                <i class="fas fa-screwdriver-wrench"></i>
+                <div><strong>Production Lab</strong><p>Diagnose failures and choose operational responses.</p></div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="practice-library" aria-labelledby="practice-library-title">
+    <div class="container">
+        <div class="practice-section-heading practice-section-heading--left">
+            <span>Your training queue</span>
+            <h2 id="practice-library-title">Apache Kafka practice</h2>
+        </div>
+
+        <div class="practice-grid" id="practice-grid">
+            <article class="practice-card format-quick"
+                     data-storage-key="codewithkyryl.practice.{{ quick_quiz.slug }}.v1"
+                     data-total="{{ quick_quiz.questions | size }}">
+                <div class="practice-card-topline">
+                    <span class="practice-format"><i class="fas fa-bolt"></i> {{ quick_quiz.format_label }}</span>
+                    <span class="practice-level level-junior">{{ quick_quiz.difficulty }}</span>
+                </div>
+                <div class="practice-card-icon"><i class="fas fa-layer-group"></i></div>
+                <h3>{{ quick_quiz.title }}</h3>
+                <p>{{ quick_quiz.outcome }}</p>
+                <div class="practice-card-meta">
+                    <span><i class="fas fa-list-ol"></i> {{ quick_quiz.questions | size }} questions</span>
+                    <span><i class="fas fa-clock"></i> {{ quick_quiz.estimated_minutes }} min</span>
+                </div>
+                <div class="practice-card-progress" aria-hidden="true"><span></span></div>
+                <div class="practice-card-footer">
+                    <span class="practice-card-status">Not started</span>
+                    <a href="{{ '/quizzes/' | append: quick_quiz.slug | append: '/' | relative_url }}" class="practice-card-cta">Start quiz <i class="fas fa-arrow-right"></i></a>
+                </div>
+            </article>
+
+            <article class="practice-card format-scenario"
+                     data-storage-key="codewithkyryl.practice.{{ scenario_drill.slug }}.v1"
+                     data-total="{{ scenario_drill.questions | size }}">
+                <div class="practice-card-topline">
+                    <span class="practice-format"><i class="fas fa-shuffle"></i> {{ scenario_drill.format_label }}</span>
+                    <span class="practice-level level-middle">{{ scenario_drill.difficulty }}</span>
+                </div>
+                <div class="practice-card-icon"><i class="fas fa-sliders"></i></div>
+                <h3>{{ scenario_drill.title }}</h3>
+                <p>{{ scenario_drill.outcome }}</p>
+                <div class="practice-card-meta">
+                    <span><i class="fas fa-list-ol"></i> {{ scenario_drill.questions | size }} scenarios</span>
+                    <span><i class="fas fa-clock"></i> {{ scenario_drill.estimated_minutes }} min</span>
+                </div>
+                <div class="practice-card-progress" aria-hidden="true"><span></span></div>
+                <div class="practice-card-footer">
+                    <span class="practice-card-status">Not started</span>
+                    <a href="{{ '/quizzes/' | append: scenario_drill.slug | append: '/' | relative_url }}" class="practice-card-cta">Start drill <i class="fas fa-arrow-right"></i></a>
+                </div>
+            </article>
+
+            <article class="practice-card format-lab"
+                     data-storage-key="codewithkyryl.practice.{{ production_lab.slug }}.v1"
+                     data-total="{{ production_lab.questions | size }}">
+                <div class="practice-card-topline">
+                    <span class="practice-format"><i class="fas fa-screwdriver-wrench"></i> {{ production_lab.format_label }}</span>
+                    <span class="practice-level level-senior">{{ production_lab.difficulty }}</span>
+                </div>
+                <div class="practice-card-icon"><i class="fas fa-server"></i></div>
+                <h3>{{ production_lab.title }}</h3>
+                <p>{{ production_lab.outcome }}</p>
+                <div class="practice-card-meta">
+                    <span><i class="fas fa-list-ol"></i> {{ production_lab.questions | size }} incidents</span>
+                    <span><i class="fas fa-clock"></i> {{ production_lab.estimated_minutes }} min</span>
+                </div>
+                <div class="practice-card-progress" aria-hidden="true"><span></span></div>
+                <div class="practice-card-footer">
+                    <span class="practice-card-status">Not started</span>
+                    <a href="{{ '/quizzes/' | append: production_lab.slug | append: '/' | relative_url }}" class="practice-card-cta">Enter lab <i class="fas fa-arrow-right"></i></a>
+                </div>
+            </article>
+
+            <article class="practice-card format-lab practice-card--featured"
+                     data-storage-key="codewithkyryl.kafka-local-cache-lab.v1"
+                     data-total="4">
+                <div class="practice-card-topline">
+                    <span class="practice-format"><i class="fas fa-screwdriver-wrench"></i> Production Lab</span>
+                    <span class="practice-level level-middle">Middle</span>
+                </div>
+                <div class="practice-card-icon"><i class="fas fa-arrows-rotate"></i></div>
+                <h3>Kafka Local Cache Incident Lab</h3>
+                <p>Keep a materialized local cache correct through consumer-group, replay, readiness, and tombstone failures.</p>
+                <div class="practice-card-meta">
+                    <span><i class="fas fa-list-ol"></i> 4 connected incidents</span>
+                    <span><i class="fas fa-clock"></i> 5 min</span>
+                </div>
+                <div class="practice-card-progress" aria-hidden="true"><span></span></div>
+                <div class="practice-card-footer">
+                    <span class="practice-card-status">Not started</span>
+                    <a href="{{ '/labs/kafka-local-cache/' | relative_url }}" class="practice-card-cta">Enter lab <i class="fas fa-arrow-right"></i></a>
+                </div>
+            </article>
+        </div>
+    </div>
+</section>
+
+<section class="practice-principle">
+    <div class="container">
+        <i class="fas fa-code-branch"></i>
+        <div><strong>The rule behind this practice system</strong><p>Recall verifies vocabulary. Scenarios build prediction. Labs build judgment. Use the smallest format that exposes the gap.</p></div>
+    </div>
+</section>

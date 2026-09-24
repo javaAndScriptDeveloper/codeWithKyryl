@@ -2,7 +2,7 @@
 layout: quiz
 permalink: /quizzes/kafka/
 quiz: kafka
-title: Apache Kafka — Core Quiz
-description: 12 exam-grade questions modelled on the Confluent Certified Developer
-  exam. Tricky edge cases, with an explanation after every answer.
+title: Apache Kafka — Core Scenario Drill
+description: 12 applied Kafka scenarios covering partitions, ISR, delivery semantics
+  and consumer groups, with an explanation after every decision.
 ---

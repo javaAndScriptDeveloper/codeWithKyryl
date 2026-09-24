@@ -54,14 +54,16 @@ css:
             </article>
             {% endfor %}
 
-            {% comment %} Latest quizzes mixed into the same feed {% endcomment %}
+            {% comment %} Practice sets mixed into the same feed {% endcomment %}
             {% assign all_quizzes = "" | split: "" %}
             {% for item in site.data.quizzes %}{% assign all_quizzes = all_quizzes | push: item[1] %}{% endfor %}
             {% assign latest_quizzes = all_quizzes | sort: "order" %}
             {% for quiz in latest_quizzes limit: 3 %}
-            <article class="post-card post-card--quiz">
+            <article class="post-card post-card--quiz post-card--{{ quiz.format }}">
                 <div class="post-image">
-                    <i class="fas fa-brain"></i>
+                    {% if quiz.format == 'scenario-drill' %}<i class="fas fa-shuffle"></i>
+                    {% elsif quiz.format == 'production-lab' %}<i class="fas fa-screwdriver-wrench"></i>
+                    {% else %}<i class="fas fa-bolt"></i>{% endif %}
                 </div>
                 <div class="post-content">
                     {% if quiz.tags and quiz.tags.size > 0 %}
@@ -72,13 +74,13 @@ css:
                     </div>
                     {% endif %}
                     <div class="post-meta post-meta--quiz quiz-badges-row">
-                        <span class="post-tag post-tag--quiz">Quiz</span>
+                        <span class="post-tag post-tag--quiz">{{ quiz.format_label | default: 'Quick Quiz' }}</span>
                         {% if quiz.difficulty %}<span class="qchip-difficulty level-{{ quiz.difficulty | downcase }}"><i class="fas fa-signal"></i>{{ quiz.difficulty }}</span>{% endif %}
                     </div>
                     <h3><a href="{{ '/quizzes/' | append: quiz.slug | relative_url }}">{{ quiz.title }}</a></h3>
                     <p class="post-excerpt">{{ quiz.description | strip_html | truncatewords: 20 }}</p>
                     <a href="{{ '/quizzes/' | append: quiz.slug | relative_url }}" class="subtle-cta">
-                      Take the quiz <i class="fas fa-arrow-right"></i>
+                      {% if quiz.format == 'scenario-drill' %}Start the drill{% elsif quiz.format == 'production-lab' %}Enter the lab{% else %}Take the quiz{% endif %} <i class="fas fa-arrow-right"></i>
                     </a>
                 </div>
             </article>
@@ -95,8 +97,44 @@ css:
             <a href="{{ '/tutorials' | relative_url }}" class="view-all-link">
                 View all articles <i class="fas fa-arrow-right"></i>
             </a>
+            <a href="{{ '/practice' | relative_url }}" class="view-all-link">
+                Explore practice <i class="fas fa-arrow-right"></i>
+            </a>
         </div>
         {% endif %}
+    </div>
+</section>
+
+<section class="lab-feature" id="production-lab">
+    <div class="container">
+        <div class="lab-feature-card">
+            <div class="lab-feature-copy">
+                <span class="lab-feature-eyebrow"><i class="fas fa-screwdriver-wrench"></i> Interactive Production Lab</span>
+                <h2>Three pods are healthy. Their caches disagree.</h2>
+                <p>Take the on-call seat and diagnose four Kafka failures involving consumer groups, startup replay, readiness, and tombstones.</p>
+                <div class="lab-feature-meta">
+                    <span><i class="fas fa-clock"></i> 5 min</span>
+                    <span><i class="fas fa-layer-group"></i> 4 incidents</span>
+                    <span><i class="fas fa-signal"></i> Middle</span>
+                </div>
+                <a class="btn-primary" href="{{ '/labs/kafka-local-cache/' | relative_url }}">
+                    Start the incident <i class="fas fa-arrow-right"></i>
+                </a>
+            </div>
+            <div class="lab-feature-terminal" aria-hidden="true">
+                <div class="lab-terminal-bar">
+                    <span></span><span></span><span></span>
+                    <em>INC-001 · local-cache-prod</em>
+                </div>
+                <div class="lab-terminal-body">
+                    <div><span class="terminal-time">10:41:03</span> <span class="terminal-warn">WARN</span> cache mismatch detected</div>
+                    <div><span class="terminal-time">10:41:03</span> pod-a keys=<strong>184</strong></div>
+                    <div><span class="terminal-time">10:41:03</span> pod-b keys=<strong>221</strong></div>
+                    <div><span class="terminal-time">10:41:03</span> pod-c keys=<strong>197</strong></div>
+                    <div class="terminal-question">$ what is your next move?<span class="terminal-cursor"></span></div>
+                </div>
+            </div>
+        </div>
     </div>
 </section>
 

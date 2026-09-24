@@ -15,11 +15,15 @@ hands-on, production-focused, and built around real working code.
 {% assign sorted = site.articles | sort: "date" | reverse %}{% for post in sorted %}
 - [{{ post.title }}]({{ post.url | absolute_url }}): {{ post.excerpt | default: post.description | strip_html | strip_newlines | truncate: 200 }}{% endfor %}
 
-## Practice quizzes
+## Practice sets
 {% assign quizzes = site.data.quizzes | sort %}{% for item in quizzes %}{% assign q = item[1] %}
-- [{{ q.title }} quiz]({{ '/quizzes/' | absolute_url }}{{ q.slug }}/): {{ q.description | strip_newlines | strip }}{% endfor %}
+- [{{ q.title }} — {{ q.format_label | default: 'Quick Quiz' }}]({{ '/quizzes/' | absolute_url }}{{ q.slug }}/): {{ q.description | strip_newlines | strip }}{% endfor %}
+
+## Interactive labs
+- [Kafka Local Cache Incident Lab]({{ '/labs/kafka-local-cache/' | absolute_url }}): Diagnose production failures involving consumer groups, startup replay, readiness gates, and tombstones.
 
 ## More
+- [All practice]({{ '/practice/' | absolute_url }})
 - [All tutorials]({{ '/tutorials/' | absolute_url }})
-- [All quizzes]({{ '/quizzes/' | absolute_url }})
+- [Question-set index]({{ '/quizzes/' | absolute_url }})
 - [RSS feed]({{ '/feed.xml' | absolute_url }})

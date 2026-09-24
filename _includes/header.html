@@ -10,7 +10,7 @@
         <ul class="nav-links">
             <li><a href="{{ '/' | relative_url }}">Home</a></li>
             <li><a href="{{ '/tutorials' | relative_url }}">Articles</a></li>
-            <li><a href="{{ '/quizzes' | relative_url }}">Quizzes</a></li>
+            <li><a href="{{ '/practice' | relative_url }}">Practice</a></li>
             <li><a href="{{ '/#about' | relative_url }}">About</a></li>
             <li><a href="{{ '/#contact' | relative_url }}">Contact</a></li>
         </ul>
@@ -42,7 +42,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const currentPath = window.location.pathname.replace(/\/$/, '') || '/';
     document.querySelectorAll('.nav-links a').forEach(link => {
         const linkPath = link.pathname.replace(/\/$/, '') || '/';
-        if (linkPath === currentPath) link.classList.add('active');
+        const isPracticeChild = linkPath === '/practice' &&
+            (currentPath.startsWith('/quizzes/') || currentPath.startsWith('/labs/'));
+        if (linkPath === currentPath || isPracticeChild) link.classList.add('active');
     });
 });
 </script>

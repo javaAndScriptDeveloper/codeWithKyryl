@@ -177,6 +177,43 @@ code:not(pre code) {
     background: var(--color-bg-page);
 }
 
+.post-lab-cta {
+    margin: 2.5rem 0;
+    padding: 1.75rem;
+    background: linear-gradient(135deg, #ecfdf5, #ffffff);
+    border: 1px solid #a7f3d0;
+    border-left: 5px solid var(--color-primary);
+    border-radius: 10px;
+}
+
+.post-lab-cta-label {
+    color: var(--color-primary-dark);
+    font-family: var(--font-code);
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+}
+
+.post-content .post-lab-cta h2 {
+    margin-top: 0.35rem;
+    font-size: 1.45rem;
+}
+
+.post-content .post-lab-cta p {
+    margin-bottom: 1rem;
+    color: #374151;
+    font-size: 0.92rem;
+}
+
+.post-content .post-lab-cta .btn-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: #fff;
+    text-decoration: none;
+}
+
 .post-tag {
     background: #e6f7f2;
     color: var(--color-primary-dark);

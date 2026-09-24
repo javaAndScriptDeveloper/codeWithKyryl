@@ -518,6 +518,16 @@ These costs do not make the pattern wrong. They define its useful range: compact
 eventually consistent reference data with a very hot read path and a team already comfortable
 operating Kafka.
 
+<aside class="post-lab-cta">
+  <span class="post-lab-cta-label">Interactive production lab</span>
+  <h2>Can you keep this architecture alive?</h2>
+  <p>Diagnose four failures involving consumer groups, startup replay, readiness, and tombstones.
+  It takes about five minutes.</p>
+  <a href="{{ '/labs/kafka-local-cache/' | relative_url }}" class="btn-primary">
+    Start the incident lab <i class="fas fa-arrow-right"></i>
+  </a>
+</aside>
+
 ## Code
 
 Code from this article is available at

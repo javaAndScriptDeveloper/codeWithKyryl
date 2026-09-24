@@ -92,7 +92,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const total = filtered.length;
         const showingStart = Math.min(start + 1, total);
         const showingEnd = Math.min(end, total);
-        paginationInfo.textContent = `Showing ${showingStart}-${showingEnd} of ${total} quizzes`;
+        paginationInfo.textContent = `Showing ${showingStart}-${showingEnd} of ${total} practice sets`;
     }
 
     function renderPagination() {

@@ -498,6 +498,8 @@ pre { position: relative; }
 .section-cta {
     display: flex;
     justify-content: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
     margin-top: 2rem;
 }
 

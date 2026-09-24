@@ -1,249 +1,316 @@
 document.addEventListener('DOMContentLoaded', function () {
-    const dataEl = document.getElementById('quiz-data');
+    const dataElement = document.getElementById('quiz-data');
     const root = document.getElementById('quiz-root');
-    if (!dataEl || !root) return;
+    if (!dataElement || !root) return;
 
-    const quiz = JSON.parse(dataEl.textContent);
-    const questions = quiz.questions || [];
+    const practice = JSON.parse(dataElement.textContent);
+    const questions = practice.questions || [];
     if (questions.length === 0) return;
 
-    // DOM
-    const counterEl = document.getElementById('quiz-counter');
-    const scoreEl = document.getElementById('quiz-score');
-    const progressBar = document.getElementById('quiz-progress-bar');
-    const progressEl = root.querySelector('.quiz-progress');
-    const questionEl = document.getElementById('quiz-question');
-    const controlsEl = document.getElementById('quiz-controls');
-    const resultEl = document.getElementById('quiz-result');
+    const format = root.dataset.format || practice.format || 'quick-quiz';
+    const slug = root.dataset.slug || practice.slug || 'practice';
+    const storageKey = `codewithkyryl.practice.${slug}.v1`;
+    const vocabulary = formatVocabulary(format);
 
-    // State
+    const counterElement = document.getElementById('quiz-counter');
+    const scoreElement = document.getElementById('quiz-score');
+    const progressBar = document.getElementById('quiz-progress-bar');
+    const progressElement = root.querySelector('.quiz-progress');
+    const questionElement = document.getElementById('quiz-question');
+    const controlsElement = document.getElementById('quiz-controls');
+    const resultElement = document.getElementById('quiz-result');
+
     let current = 0;
-    let picks = [];          // indices picked for the current question
-    let answered = false;    // current question locked
+    let picks = [];
+    let answered = false;
     let score = 0;
-    let results = [];        // per-question: { picks, correct }
+    let results = [];
+    let bestScore = 0;
 
     init();
 
     function init() {
-        questionEl.addEventListener('click', onQuestionClick);
-        controlsEl.addEventListener('click', onControlsClick);
-        resultEl.addEventListener('click', onResultClick);
+        restoreProgress();
+        questionElement.addEventListener('click', onQuestionClick);
+        controlsElement.addEventListener('click', onControlsClick);
+        resultElement.addEventListener('click', onResultClick);
         document.addEventListener('keydown', onKeydown);
-        renderQuestion();
+
+        if (current >= questions.length) renderResult();
+        else renderQuestion();
+
+        track('practice_started', { slug: slug, format: format });
     }
 
-    // ---- helpers ----------------------------------------------------------
-    function escapeHtml(str) {
-        const div = document.createElement('div');
-        div.textContent = str;
-        return div.innerHTML;
+    function formatVocabulary(value) {
+        if (value === 'scenario-drill') {
+            return {
+                singular: 'scenario', plural: 'scenarios', prefix: 'SCN',
+                score: 'Decisions', correct: 'Sound decision', wrong: 'Review this decision'
+            };
+        }
+        if (value === 'production-lab') {
+            return {
+                singular: 'incident', plural: 'incidents', prefix: 'INC',
+                score: 'Stabilized', correct: 'Incident stabilized', wrong: 'Unsafe response'
+            };
+        }
+        return {
+            singular: 'question', plural: 'questions', prefix: 'Q',
+            score: 'Score', correct: 'Correct', wrong: 'Not quite'
+        };
     }
 
-    function correctSet(q) {
-        if (q.type === 'multi') return q.correctIndexes || [];
-        return [q.correctIndex];
+    function escapeHtml(value) {
+        const element = document.createElement('div');
+        element.textContent = String(value);
+        return element.innerHTML;
     }
 
-    function isMulti(q) {
-        return q.type === 'multi';
+    function capitalize(value) {
+        return value.charAt(0).toUpperCase() + value.slice(1);
     }
 
-    function sameSet(a, b) {
-        if (a.length !== b.length) return false;
-        const sa = [...a].sort();
-        const sb = [...b].sort();
-        return sa.every((v, i) => v === sb[i]);
+    function correctSet(question) {
+        if (question.type === 'multi') return question.correctIndexes || [];
+        return [question.correctIndex];
     }
 
-    // ---- rendering --------------------------------------------------------
+    function isMulti(question) {
+        return question.type === 'multi';
+    }
+
+    function sameSet(first, second) {
+        if (first.length !== second.length) return false;
+        const sortedFirst = [...first].sort();
+        const sortedSecond = [...second].sort();
+        return sortedFirst.every((value, index) => value === sortedSecond[index]);
+    }
+
+    function restoreProgress() {
+        try {
+            const saved = JSON.parse(window.localStorage.getItem(storageKey));
+            if (!saved) return;
+            bestScore = Math.max(0, Math.min(questions.length, Number(saved.bestScore) || 0));
+            if (saved.completed || !Array.isArray(saved.answers)) return;
+
+            results = saved.answers.slice(0, questions.length).filter(function (result) {
+                return result && Array.isArray(result.picks) && typeof result.correct === 'boolean';
+            });
+            score = results.filter(function (result) { return result.correct; }).length;
+            current = results.length;
+        } catch (error) {
+            // Storage is optional; a fresh in-memory run still works.
+        }
+    }
+
+    function saveProgress(completed) {
+        bestScore = completed ? Math.max(bestScore, score) : bestScore;
+        try {
+            window.localStorage.setItem(storageKey, JSON.stringify({
+                current: current,
+                score: score,
+                answers: results,
+                completed: completed,
+                bestScore: bestScore
+            }));
+        } catch (error) {
+            // Storage is optional; keep the current page session usable.
+        }
+    }
+
     function renderQuestion() {
-        const q = questions[current];
+        const question = questions[current];
         picks = [];
         answered = false;
 
-        counterEl.textContent = `Question ${current + 1} of ${questions.length}`;
-        scoreEl.textContent = `Score: ${score}`;
+        counterElement.textContent = `${capitalize(vocabulary.singular)} ${current + 1} of ${questions.length}`;
+        scoreElement.textContent = `${vocabulary.score}: ${score}`;
         updateProgress();
 
-        const typeLabel = isMulti(q)
-            ? 'Select all that apply'
-            : (q.type === 'boolean' ? 'True or false' : 'Pick one');
+        let typeLabel;
+        if (isMulti(question)) typeLabel = 'Select all that apply';
+        else if (question.type === 'boolean') typeLabel = 'True or false';
+        else typeLabel = format === 'quick-quiz' ? 'Pick one' : 'Choose a response';
 
+        const sequence = `${vocabulary.prefix}-${String(current + 1).padStart(2, '0')}`;
         let html = `<div class="quiz-qhead">
+                <span class="quiz-qsequence">${escapeHtml(sequence)}</span>
                 <span class="quiz-qtype">${escapeHtml(typeLabel)}</span>
             </div>
-            <p class="quiz-qtext">${escapeHtml(q.question)}</p>
-            <div class="quiz-options" role="${isMulti(q) ? 'group' : 'radiogroup'}">`;
+            <p class="quiz-qtext">${escapeHtml(question.question)}</p>
+            <div class="quiz-options" role="group" aria-label="Answer choices">`;
 
-        q.options.forEach((opt, i) => {
-            html += `<button type="button" class="quiz-option" data-index="${i}"
-                role="${isMulti(q) ? 'checkbox' : 'radio'}" aria-checked="false">
-                <span class="quiz-option-key">${i + 1}</span>
-                <span class="quiz-option-text">${escapeHtml(opt)}</span>
+        question.options.forEach(function (option, index) {
+            html += `<button type="button" class="quiz-option" data-index="${index}" aria-pressed="false">
+                <span class="quiz-option-key">${index + 1}</span>
+                <span class="quiz-option-text">${escapeHtml(option)}</span>
             </button>`;
         });
 
-        html += `</div>
-            <div class="quiz-explanation" id="quiz-explanation" hidden aria-live="polite"></div>`;
-
-        questionEl.innerHTML = html;
+        html += `</div><div class="quiz-explanation" id="quiz-explanation" hidden aria-live="polite"></div>`;
+        questionElement.innerHTML = html;
         renderControls();
     }
 
     function renderControls() {
-        const q = questions[current];
+        const question = questions[current];
         if (answered) {
             const isLast = current === questions.length - 1;
-            controlsEl.innerHTML = `<button type="button" class="btn-primary" data-action="next">
-                ${isLast ? 'See results' : 'Next question'} <i class="fas fa-arrow-right"></i>
+            controlsElement.innerHTML = `<button type="button" class="btn-primary" data-action="next">
+                ${isLast ? 'Open report' : `Next ${vocabulary.singular}`} <i class="fas fa-arrow-right"></i>
             </button>`;
-        } else if (isMulti(q)) {
-            controlsEl.innerHTML = `<button type="button" class="btn-primary" data-action="check" disabled>
-                Check answer
-            </button>`;
+        } else if (isMulti(question)) {
+            controlsElement.innerHTML = '<button type="button" class="btn-primary" data-action="check" disabled>Commit decision</button>';
         } else {
-            controlsEl.innerHTML = '';
+            controlsElement.innerHTML = '';
         }
     }
 
     function updateProgress() {
-        const pct = Math.round((current / questions.length) * 100);
-        progressBar.style.width = pct + '%';
-        if (progressEl) progressEl.setAttribute('aria-valuenow', String(pct));
+        const percent = Math.round((current / questions.length) * 100);
+        progressBar.style.width = `${percent}%`;
+        if (progressElement) progressElement.setAttribute('aria-valuenow', String(percent));
     }
 
-    // ---- interaction ------------------------------------------------------
-    function onQuestionClick(e) {
-        const btn = e.target.closest('.quiz-option');
-        if (!btn || answered) return;
-        const idx = parseInt(btn.dataset.index, 10);
-        const q = questions[current];
+    function onQuestionClick(event) {
+        const button = event.target.closest('.quiz-option');
+        if (!button || answered) return;
+        const index = Number(button.dataset.index);
+        const question = questions[current];
 
-        if (isMulti(q)) {
-            togglePick(idx, btn);
-        } else {
-            picks = [idx];
+        if (isMulti(question)) togglePick(index, button);
+        else {
+            picks = [index];
+            button.setAttribute('aria-pressed', 'true');
             lockAnswer();
         }
     }
 
-    function togglePick(idx, btn) {
-        const pos = picks.indexOf(idx);
-        if (pos > -1) {
-            picks.splice(pos, 1);
-            btn.classList.remove('selected');
-            btn.setAttribute('aria-checked', 'false');
+    function togglePick(index, button) {
+        const position = picks.indexOf(index);
+        if (position > -1) {
+            picks.splice(position, 1);
+            button.classList.remove('selected');
+            button.setAttribute('aria-pressed', 'false');
         } else {
-            picks.push(idx);
-            btn.classList.add('selected');
-            btn.setAttribute('aria-checked', 'true');
+            picks.push(index);
+            button.classList.add('selected');
+            button.setAttribute('aria-pressed', 'true');
         }
-        const checkBtn = controlsEl.querySelector('[data-action="check"]');
-        if (checkBtn) checkBtn.disabled = picks.length === 0;
+        const checkButton = controlsElement.querySelector('[data-action="check"]');
+        if (checkButton) checkButton.disabled = picks.length === 0;
     }
 
-    function onControlsClick(e) {
-        const action = e.target.closest('[data-action]');
+    function onControlsClick(event) {
+        const action = event.target.closest('[data-action]');
         if (!action) return;
         if (action.dataset.action === 'check') lockAnswer();
-        else if (action.dataset.action === 'next') next();
+        if (action.dataset.action === 'next') next();
     }
 
     function lockAnswer() {
         if (answered) return;
-        const q = questions[current];
-        const correct = correctSet(q);
+        const question = questions[current];
+        const correct = correctSet(question);
         const isCorrect = sameSet(picks, correct);
 
         answered = true;
-        if (isCorrect) score++;
+        if (isCorrect) score += 1;
         results.push({ picks: [...picks], correct: isCorrect });
 
-        const optionEls = questionEl.querySelectorAll('.quiz-option');
-        optionEls.forEach((el) => {
-            const i = parseInt(el.dataset.index, 10);
-            el.disabled = true;
-            el.setAttribute('aria-disabled', 'true');
-            if (correct.includes(i)) el.classList.add('correct');
-            else if (picks.includes(i)) el.classList.add('incorrect');
+        questionElement.querySelectorAll('.quiz-option').forEach(function (option) {
+            const index = Number(option.dataset.index);
+            option.disabled = true;
+            option.setAttribute('aria-disabled', 'true');
+            if (correct.includes(index)) option.classList.add('correct');
+            else if (picks.includes(index)) option.classList.add('incorrect');
         });
 
-        const expEl = document.getElementById('quiz-explanation');
-        expEl.hidden = false;
-        expEl.innerHTML = `<span class="quiz-verdict ${isCorrect ? 'is-correct' : 'is-wrong'}">
+        const explanationElement = document.getElementById('quiz-explanation');
+        explanationElement.hidden = false;
+        explanationElement.innerHTML = `<span class="quiz-verdict ${isCorrect ? 'is-correct' : 'is-wrong'}">
                 <i class="fas ${isCorrect ? 'fa-circle-check' : 'fa-circle-xmark'}"></i>
-                ${isCorrect ? 'Correct' : 'Not quite'}
+                ${escapeHtml(isCorrect ? vocabulary.correct : vocabulary.wrong)}
             </span>
-            <p>${escapeHtml(q.explanation)}</p>`;
+            ${format === 'quick-quiz' ? '' : '<span class="quiz-consequence-label">Operational consequence</span>'}
+            <p>${escapeHtml(question.explanation)}</p>`;
 
-        scoreEl.textContent = `Score: ${score}`;
+        scoreElement.textContent = `${vocabulary.score}: ${score}`;
         renderControls();
-        const nextBtn = controlsEl.querySelector('[data-action="next"]');
-        if (nextBtn) nextBtn.focus();
+        saveProgress(false);
+        track('practice_answered', {
+            slug: slug, format: format, item: current + 1, correct: isCorrect
+        });
+
+        const nextButton = controlsElement.querySelector('[data-action="next"]');
+        if (nextButton) nextButton.focus();
     }
 
     function next() {
-        current++;
-        if (current >= questions.length) {
-            renderResult();
-        } else {
+        current += 1;
+        if (current >= questions.length) renderResult();
+        else {
+            saveProgress(false);
             renderQuestion();
         }
     }
 
-    // ---- result -----------------------------------------------------------
     function renderResult() {
         progressBar.style.width = '100%';
-        if (progressEl) progressEl.setAttribute('aria-valuenow', '100');
-        questionEl.hidden = true;
-        controlsEl.hidden = true;
-        controlsEl.innerHTML = '';   // clear: .quiz-controls{display:flex} overrides [hidden]
-        counterEl.textContent = 'Complete';
-        scoreEl.textContent = '';
+        if (progressElement) progressElement.setAttribute('aria-valuenow', '100');
+        questionElement.hidden = true;
+        controlsElement.hidden = true;
+        controlsElement.innerHTML = '';
+        counterElement.textContent = 'Complete';
+        scoreElement.textContent = '';
 
         const total = questions.length;
-        const pct = Math.round((score / total) * 100);
+        const percent = Math.round((score / total) * 100);
         let verdict;
-        if (pct >= 80) verdict = 'Excellent — you know your Kafka.';
-        else if (pct >= 50) verdict = 'Solid, but a few gaps to review.';
-        else verdict = 'Worth another pass — check the explanations.';
+        if (format === 'production-lab') {
+            if (percent >= 80) verdict = 'Production ready — your reliability calls held up.';
+            else if (percent >= 50) verdict = 'Shift survived, but the report exposes risky decisions.';
+            else verdict = 'The system needs another incident review before the next shift.';
+        } else if (format === 'scenario-drill') {
+            if (percent >= 80) verdict = 'Strong predictions — the Kafka behavior is becoming intuitive.';
+            else if (percent >= 50) verdict = 'Solid base, with several configuration gaps to revisit.';
+            else verdict = 'Re-run the scenarios after reviewing their explanations.';
+        } else if (percent >= 80) verdict = 'Excellent — the Kafka fundamentals are in place.';
+        else if (percent >= 50) verdict = 'Solid, but a few fundamentals need review.';
+        else verdict = 'Worth another pass — use the explanations to rebuild the model.';
 
-        let html = `<div class="quiz-result-card">
-            <div class="quiz-result-ring" style="--pct:${pct}">
+        saveProgress(true);
+        track('practice_completed', { slug: slug, format: format, score: score, total: total });
+
+        resultElement.innerHTML = `<div class="quiz-result-card">
+            <span class="quiz-result-format">${escapeHtml(root.dataset.formatLabel || practice.format_label || 'Practice report')}</span>
+            <div class="quiz-result-ring" style="--pct:${percent}">
                 <span class="quiz-result-score">${score}<small>/${total}</small></span>
             </div>
-            <p class="quiz-result-pct">${pct}%</p>
+            <p class="quiz-result-pct">${percent}%</p>
             <p class="quiz-result-verdict">${escapeHtml(verdict)}</p>
             <div class="quiz-result-actions">
-                <button type="button" class="btn-primary" data-action="retry">
-                    <i class="fas fa-rotate-right"></i> Try again
-                </button>
-                <button type="button" class="btn-secondary" data-action="review">
-                    <i class="fas fa-list-check"></i> Review answers
-                </button>
-                <a class="btn-secondary" href="${quizzesUrl()}">
-                    <i class="fas fa-grip"></i> All quizzes
-                </a>
+                <button type="button" class="btn-primary" data-action="retry"><i class="fas fa-rotate-right"></i> Run again</button>
+                <button type="button" class="btn-secondary" data-action="review"><i class="fas fa-list-check"></i> Review ${escapeHtml(vocabulary.plural)}</button>
+                <a class="btn-secondary" href="${practiceUrl()}"><i class="fas fa-grip"></i> All practice</a>
             </div>
-        </div>
-        <div id="quiz-review" hidden></div>`;
+        </div><div id="quiz-review" hidden></div>`;
 
-        resultEl.innerHTML = html;
-        resultEl.hidden = false;
+        resultElement.hidden = false;
         root.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
-    function quizzesUrl() {
+    function practiceUrl() {
         const back = document.querySelector('.quiz-back');
-        return (back && back.getAttribute('href')) || '/quizzes/';
+        return (back && back.getAttribute('href')) || '/practice/';
     }
 
-    function onResultClick(e) {
-        const action = e.target.closest('[data-action]');
+    function onResultClick(event) {
+        const action = event.target.closest('[data-action]');
         if (!action) return;
         if (action.dataset.action === 'retry') retry();
-        else if (action.dataset.action === 'review') toggleReview(action);
+        if (action.dataset.action === 'review') toggleReview();
     }
 
     function retry() {
@@ -252,75 +319,82 @@ document.addEventListener('DOMContentLoaded', function () {
         answered = false;
         score = 0;
         results = [];
-        questionEl.hidden = false;
-        controlsEl.hidden = false;
-        resultEl.hidden = true;
-        resultEl.innerHTML = '';
+        questionElement.hidden = false;
+        controlsElement.hidden = false;
+        resultElement.hidden = true;
+        resultElement.innerHTML = '';
+        saveProgress(false);
+        track('practice_restarted', { slug: slug, format: format, best_score: bestScore });
         renderQuestion();
         root.scrollIntoView({ behavior: 'smooth' });
     }
 
-    function toggleReview(btn) {
-        const reviewEl = document.getElementById('quiz-review');
-        if (!reviewEl) return;
-        if (!reviewEl.hidden) {
-            reviewEl.hidden = true;
-            reviewEl.innerHTML = '';
+    function toggleReview() {
+        const reviewElement = document.getElementById('quiz-review');
+        if (!reviewElement) return;
+        if (!reviewElement.hidden) {
+            reviewElement.hidden = true;
+            reviewElement.innerHTML = '';
             return;
         }
-        let html = '';
-        questions.forEach((q, qi) => {
-            const r = results[qi];
-            const correct = correctSet(q);
-            html += `<div class="quiz-review-item ${r && r.correct ? 'is-correct' : 'is-wrong'}">
-                <p class="quiz-review-q">
-                    <i class="fas ${r && r.correct ? 'fa-circle-check' : 'fa-circle-xmark'}"></i>
-                    ${qi + 1}. ${escapeHtml(q.question)}
-                </p>
-                <ul class="quiz-review-opts">`;
-            q.options.forEach((opt, oi) => {
-                const isAns = correct.includes(oi);
-                const wasPicked = r && r.picks.includes(oi);
+
+        reviewElement.innerHTML = questions.map(function (question, questionIndex) {
+            const result = results[questionIndex];
+            const correct = correctSet(question);
+            const options = question.options.map(function (option, optionIndex) {
+                const isAnswer = correct.includes(optionIndex);
+                const wasPicked = result && result.picks.includes(optionIndex);
                 let tag = '';
-                if (isAns) tag = '<span class="quiz-review-tag correct">correct</span>';
+                if (isAnswer) tag = '<span class="quiz-review-tag correct">correct</span>';
                 else if (wasPicked) tag = '<span class="quiz-review-tag wrong">your pick</span>';
-                html += `<li class="${isAns ? 'opt-correct' : ''} ${wasPicked && !isAns ? 'opt-wrong' : ''}">
-                    ${escapeHtml(opt)} ${tag}
-                </li>`;
-            });
-            html += `</ul><p class="quiz-review-exp">${escapeHtml(q.explanation)}</p></div>`;
-        });
-        reviewEl.innerHTML = html;
-        reviewEl.hidden = false;
-        reviewEl.scrollIntoView({ behavior: 'smooth' });
+                return `<li class="${isAnswer ? 'opt-correct' : ''} ${wasPicked && !isAnswer ? 'opt-wrong' : ''}">${escapeHtml(option)} ${tag}</li>`;
+            }).join('');
+            return `<div class="quiz-review-item ${result && result.correct ? 'is-correct' : 'is-wrong'}">
+                <p class="quiz-review-q"><i class="fas ${result && result.correct ? 'fa-circle-check' : 'fa-circle-xmark'}"></i>
+                ${capitalize(vocabulary.singular)} ${questionIndex + 1}. ${escapeHtml(question.question)}</p>
+                <ul class="quiz-review-opts">${options}</ul>
+                <p class="quiz-review-exp">${escapeHtml(question.explanation)}</p>
+            </div>`;
+        }).join('');
+        reviewElement.hidden = false;
+        reviewElement.scrollIntoView({ behavior: 'smooth' });
     }
 
-    // ---- keyboard ---------------------------------------------------------
-    function onKeydown(e) {
-        if (resultEl && !resultEl.hidden) return;
-        const q = questions[current];
+    function onKeydown(event) {
+        if (resultElement && !resultElement.hidden) return;
+        const question = questions[current];
+        if (!question) return;
 
-        // number keys select / toggle options
-        if (/^[1-9]$/.test(e.key)) {
-            const idx = parseInt(e.key, 10) - 1;
-            if (idx < q.options.length && !answered) {
-                const btn = questionEl.querySelector(`.quiz-option[data-index="${idx}"]`);
-                if (btn) {
-                    if (isMulti(q)) togglePick(idx, btn);
-                    else { picks = [idx]; lockAnswer(); }
+        if (/^[1-9]$/.test(event.key)) {
+            const index = Number(event.key) - 1;
+            if (index < question.options.length && !answered) {
+                const button = questionElement.querySelector(`.quiz-option[data-index="${index}"]`);
+                if (button) {
+                    if (isMulti(question)) togglePick(index, button);
+                    else {
+                        picks = [index];
+                        button.setAttribute('aria-pressed', 'true');
+                        lockAnswer();
+                    }
                 }
             }
             return;
         }
 
-        if (e.key === 'Enter' || e.key === 'ArrowRight') {
+        if (event.key === 'Enter' || event.key === 'ArrowRight') {
             if (answered) {
-                e.preventDefault();
+                event.preventDefault();
                 next();
-            } else if (isMulti(q) && picks.length > 0) {
-                e.preventDefault();
+            } else if (isMulti(question) && picks.length > 0) {
+                event.preventDefault();
                 lockAnswer();
             }
+        }
+    }
+
+    function track(eventName, properties) {
+        if (window.umami && typeof window.umami.track === 'function') {
+            window.umami.track(eventName, properties);
         }
     }
 });

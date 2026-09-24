@@ -1,6 +1,6 @@
 ---
 layout: quizzes-index
 permalink: /quizzes/
-title: "Backend Engineering Quizzes"
-description: "Test your backend knowledge with quizzes on Apache Kafka, Spring Boot, PostgreSQL and distributed systems — Junior to Senior, with instant explanations."
+title: "Backend Engineering Practice Sets"
+description: "Apache Kafka quick quizzes, scenario drills, and production decision labs for Junior through Senior backend engineers."
 ---

@@ -8,6 +8,7 @@ js:
 ---
 
 {% assign quiz = site.data.quizzes[page.quiz] %}
+{% assign practice_format = quiz.format | default: 'quick-quiz' %}
 {% unless quiz %}
 <section class="tutorials-content">
     <div class="container">
@@ -15,24 +16,48 @@ js:
             <div class="no-results-content">
                 <i class="fas fa-triangle-exclamation"></i>
                 <h3>Quiz not found</h3>
-                <p>This quiz could not be loaded. <a href="{{ '/quizzes/' | relative_url }}">Back to all quizzes</a>.</p>
+                <p>This practice set could not be loaded. <a href="{{ '/practice/' | relative_url }}">Back to practice</a>.</p>
             </div>
         </div>
     </div>
 </section>
 {% else %}
-<section class="quiz-page">
+<section class="quiz-page practice-mode-{{ practice_format }}">
     <div class="container">
-        <a href="{{ '/quizzes/' | relative_url }}" class="quiz-back">
-            <i class="fas fa-arrow-left"></i> All quizzes
+        <a href="{{ '/practice/' | relative_url }}" class="quiz-back">
+            <i class="fas fa-arrow-left"></i> All practice
         </a>
 
         <div class="quiz-header">
+            <div class="quiz-header-badges">
+                <span class="quiz-format-badge format-{{ practice_format }}">
+                    {% if practice_format == 'quick-quiz' %}<i class="fas fa-bolt"></i>
+                    {% elsif practice_format == 'scenario-drill' %}<i class="fas fa-shuffle"></i>
+                    {% else %}<i class="fas fa-screwdriver-wrench"></i>{% endif %}
+                    {{ quiz.format_label | default: 'Quick Quiz' }}
+                </span>
+                <span class="quiz-level-badge level-{{ quiz.difficulty | downcase }}"><i class="fas fa-signal"></i> {{ quiz.difficulty }}</span>
+                {% if quiz.estimated_minutes %}<span class="quiz-time-badge"><i class="fas fa-clock"></i> {{ quiz.estimated_minutes }} min</span>{% endif %}
+            </div>
             <h1 class="quiz-title">{{ quiz.title }}</h1>
             <p class="quiz-subtitle">{{ quiz.subtitle }}</p>
+            {% if quiz.outcome %}<p class="quiz-outcome">{{ quiz.outcome }}</p>{% endif %}
         </div>
 
-        <div class="quiz" id="quiz-root">
+        {% if practice_format != 'quick-quiz' %}
+        <div class="practice-briefing">
+            <i class="fas {% if practice_format == 'production-lab' %}fa-triangle-exclamation{% else %}fa-terminal{% endif %}"></i>
+            <div>
+                <strong>{% if practice_format == 'production-lab' %}On-call briefing{% else %}Drill briefing{% endif %}</strong>
+                <p>{% if practice_format == 'production-lab' %}Each incident exposes a production trade-off. Choose the safest response, then inspect the operational consequence.{% else %}Each scenario is isolated. Predict Kafka's behavior from the evidence before revealing the explanation.{% endif %}</p>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="quiz quiz--{{ practice_format }}" id="quiz-root"
+             data-slug="{{ quiz.slug }}"
+             data-format="{{ practice_format }}"
+             data-format-label="{{ quiz.format_label | default: 'Quick Quiz' }}">
             <div class="quiz-topbar">
                 <span class="quiz-counter" id="quiz-counter"></span>
                 <span class="quiz-score" id="quiz-score"></span>

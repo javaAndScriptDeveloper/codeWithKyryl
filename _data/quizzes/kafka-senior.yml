@@ -4,10 +4,14 @@
 #   correctIndex   -> 0-based, used by single & boolean
 #   correctIndexes -> 0-based array, used by multi ("select all that apply")
 slug: kafka-senior
-title: "Apache Kafka — Deep Dive"
-subtitle: "ISR, EOS, rebalancing, compaction & the traps that bite in production"
-description: "10 hard questions on Apache Kafka internals for senior engineers — ISR and acks, exactly-once semantics, transactions, log compaction, rebalancing and ordering guarantees. Explanation after every answer."
+title: "Apache Kafka — Production Decisions"
+subtitle: "Stabilize failures involving ISR, EOS, rebalancing, compaction & ordering"
+description: "10 production Kafka incidents covering ISR and acks, exactly-once semantics, transactions, compaction, rebalancing and ordering guarantees."
 difficulty: "Senior"
+format: "production-lab"
+format_label: "Production Lab"
+estimated_minutes: 10
+outcome: "Make senior-level reliability decisions and see the operational consequence of each answer."
 tags: ["Kafka", "Streaming"]
 order: 3
 questions:
