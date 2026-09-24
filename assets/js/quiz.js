@@ -141,10 +141,11 @@ document.addEventListener('DOMContentLoaded', function () {
             <p class="quiz-qtext">${escapeHtml(question.question)}</p>
             <div class="quiz-options" role="group" aria-label="Answer choices">`;
 
-        question.options.forEach(function (option, index) {
+        const order = window.optionOrder ? window.optionOrder(question, Math.random) : question.options.map(function (_, index) { return index; });
+        order.forEach(function (index, position) {
             html += `<button type="button" class="quiz-option" data-index="${index}" aria-pressed="false">
-                <span class="quiz-option-key">${index + 1}</span>
-                <span class="quiz-option-text">${escapeHtml(option)}</span>
+                <span class="quiz-option-key">${position + 1}</span>
+                <span class="quiz-option-text">${escapeHtml(question.options[index])}</span>
             </button>`;
         });
 
@@ -388,10 +389,12 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!question) return;
 
         if (/^[1-9]$/.test(event.key)) {
-            const index = Number(event.key) - 1;
-            if (index < question.options.length && !answered) {
-                const button = questionElement.querySelector(`.quiz-option[data-index="${index}"]`);
+            const position = Number(event.key) - 1;
+            if (position < question.options.length && !answered) {
+                // Number keys follow the on-screen order; data-index holds the authored index.
+                const button = questionElement.querySelectorAll('.quiz-option')[position];
                 if (button) {
+                    const index = Number(button.dataset.index);
                     if (isMulti(question)) togglePick(index, button);
                     else {
                         picks = [index];
