@@ -31,9 +31,10 @@ telegram_username: notatlast
 # Logo for Organization schema / rich results (used by jekyll-seo-tag + jekyll-og-image)
 logo: /assets/img/logo.png
 
-# Twitter / X card config (jekyll-seo-tag). Uncomment + set username if you have a handle.
+# Twitter / X card config (jekyll-seo-tag) -> twitter:site. twitter:creator comes from
+# _data/authors.yml (without it, seo-tag falls back to "@<author name>").
 twitter:
-  # username: yourhandle
+  username: code_w1th_me
   card: summary_large_image
 
 # Drives Person/Organization `sameAs` in jekyll-seo-tag's JSON-LD
@@ -42,6 +43,7 @@ social:
   links:
     - https://www.linkedin.com/in/kyryl-feshchenko
     - https://t.me/notatlast
+    - https://x.com/code_w1th_me
 
 # Search engine ownership verification (jekyll-seo-tag renders these as meta tags).
 # Paste the codes from Google Search Console / Bing Webmaster Tools, then uncomment.
@@ -77,6 +79,14 @@ defaults:
       type: "articles"
     values:
       author: Kyryl Feshchenko
+  # Branded share image for pages (home, practice, quizzes, labs) so every shared link gets a
+  # large preview card. Articles are a collection, not pages: they get a per-post image from
+  # jekyll-og-image in the production build.
+  - scope:
+      path: ""
+      type: "pages"
+    values:
+      image: /assets/img/og-default.png
 
 # Exclude from processing.
 # The following items will not be processed, by default.
@@ -85,6 +95,17 @@ defaults:
 #
 # Excluded items can be processed by explicitly listing the directories or
 # their entries' file path in the `include:` list.
+#
+# Jekyll 3.x REPLACES its default list when `exclude` is set, so the defaults are repeated.
+exclude:
+  - Gemfile
+  - Gemfile.lock
+  - node_modules
+  - vendor/bundle/
+  - vendor/cache/
+  - vendor/gems/
+  - vendor/ruby/
+  - scripts/
 #
 # exclude:
 #   - .sass-cache/

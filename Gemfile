@@ -22,14 +22,16 @@ group :development do
 end
 
 # Production-only: auto-generates per-post Open Graph share images at build time.
-# Kept OUT of the :jekyll_plugins group on purpose — that group is auto-loaded by
-# Jekyll, and this plugin pulls in ruby-vips which needs libvips at runtime. libvips
-# ships in the Netlify build image but not necessarily on a dev machine, so it's only
-# wired in via _config_production.yml (see netlify.toml). Local `jekyll serve` never
-# loads it. To test OG generation locally: install libvips, then build with
-#   bundle exec jekyll build --config _config.yml,_config_production.yml
-group :production do
-  gem "jekyll-og-image"
+# It must be loaded through the :jekyll_plugins group, NOT the config `plugins:` list:
+# github-pages forces `safe: true` + its plugin whitelist whenever JEKYLL_ENV is not
+# "development", which silently drops any non-whitelisted `plugins:` entry. Bundler
+# group requires happen before that filter, and the generator is marked `safe`.
+# It is only required when JEKYLL_ENV=production (set in netlify.toml) because it pulls
+# in ruby-vips, which needs libvips — present on Netlify, not necessarily locally.
+# To test OG generation locally: install libvips, then
+#   JEKYLL_ENV=production bundle exec jekyll build --config _config.yml,_config_production.yml
+group :jekyll_plugins do
+  gem "jekyll-og-image", require: ENV["JEKYLL_ENV"] == "production"
 end
 
 # Windows and JRuby specific gems

@@ -2,14 +2,9 @@
 #   bundle exec jekyll build --config _config.yml,_config_production.yml
 #
 # Why separate: jekyll-og-image needs libvips at runtime (present in the Netlify build
-# image, not guaranteed locally). Keeping it here means local `jekyll serve` never tries
-# to load it. NOTE: Jekyll REPLACES the `plugins:` array from later configs, so the full
-# list is repeated here with jekyll-og-image appended.
-plugins:
-  - jekyll-feed
-  - jekyll-seo-tag
-  - jekyll-sitemap
-  - jekyll-og-image
+# image, not guaranteed locally). The gem itself is loaded from the Gemfile's
+# :jekyll_plugins group when JEKYLL_ENV=production — listing it under `plugins:` here
+# does nothing, because github-pages' safe-mode whitelist filters it out.
 
 # Per-post Open Graph images. The plugin writes PNGs to assets/og/ and auto-injects
 # og:image + twitter:image; jekyll-seo-tag then upgrades the card to summary_large_image.
@@ -34,13 +29,13 @@ og_image:
     fill:
       - "#1D9E75"
   image:
-    path: "assets/img/logo.png"
+    # Logo pre-flattened onto the canvas colour: the plugin flattens alpha to black.
+    path: "assets/img/og-logo.png"
     width: 120
     height: 120
-    position:
-      x: 80
-      y: 80
-    gravity: "ne"
+    radius: 0
+    # No `position`/`gravity` keys: jekyll-og-image 2.1.1 compares them as symbols but
+    # YAML yields strings ("Invalid gravity: \"ne\""). Its defaults are top-right (:ne, x 80, y 100).
   metadata:
     fields: ["date", "tags"]
     separator: " • "
