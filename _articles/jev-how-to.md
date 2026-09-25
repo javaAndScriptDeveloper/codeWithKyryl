@@ -1,6 +1,6 @@
 ---
 layout: post
-title: "How to call Jev from Java 21: typed AI decisions with HttpClient"
+title: "How to use Jev from Java: typed AI decisions"
 date: 2026-09-25
 tags: [jev, java, tutorial]
 excerpt: "Jev answers typed questions (yes/no, pick one, rate on a scale) with probabilities instead of prose. There is no Java SDK, so here is a small HttpClient integration with retries, tests and an offline stub."
@@ -20,7 +20,7 @@ faq:
 
 A support ticket comes in: "Help! My payouts have been failing for 3 days." You want three facts out of it: is it urgent, which team owns it, how angry is the customer. The usual LLM route is a prompt that asks for JSON, a parser that hopes, and a retry when the model writes a paragraph instead. Jev, TypeSafe's model, takes a different contract: you declare typed questions, it returns typed answers with probabilities, and the answer can never fall outside the options you gave it. TypeSafe ships SDKs for Python and JavaScript only, so this post wires it into plain Java 21 with `HttpClient` and Jackson.
 
-Code: https://github.com/javaAndScriptDeveloper/jev-how-to
+Code: [github.com/javaAndScriptDeveloper/jev-how-to](https://github.com/javaAndScriptDeveloper/jev-how-to)
 
 ## What you build
 
