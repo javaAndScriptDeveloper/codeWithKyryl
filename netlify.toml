@@ -1,6 +1,9 @@
 [build]
   # Layer the production config so per-post OG images (jekyll-og-image) are generated.
-  command = "bundle exec jekyll build --config _config.yml,_config_production.yml"
+  # .bundle/config points Bundler at vendor/bundle, which Netlify's cache does not keep: on a
+  # cached build Netlify skips `bundle install` and Jekyll cannot find its gems. Install
+  # whatever `bundle check` says is missing first.
+  command = "(bundle check || bundle install) && bundle exec jekyll build --config _config.yml,_config_production.yml"
   publish = "_site"
 
 [build.environment]
