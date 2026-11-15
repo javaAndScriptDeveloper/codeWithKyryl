@@ -1,0 +1,64 @@
+{%- comment -%}
+  Auto-route first-time visitors on the English home (/) to their browser locale.
+
+  Rules, in order:
+  1. An explicit language-switcher choice (localStorage, set by lang-switcher.html)
+     always wins — forever, across sessions.
+  2. Runs at most once per tab session (sessionStorage), including when the
+     decision is "stay on English" — so reloads and in-site navigation never bounce.
+  3. Never fires on reload or back/forward navigation (Navigation Timing type),
+     so the browser back button is never fought.
+  4. Unknown locale, blocked storage, or English -> stay. English is the fallback.
+
+  Matching: full tag first, then base language. Special cases:
+  - pt / pt-PT -> pt-BR
+  - zh / zh-Hans / zh-CN / zh-SG -> zh-CN;  zh-Hant / zh-TW / zh-HK -> English
+    (we don't ship Traditional Chinese; guessing simplified at them is worse)
+  SEO note: this only affects humans' browsers. Crawlers get the same en HTML
+  plus the hreflang alternates emitted in the head, which remain the locale
+  signal for search engines.
+{%- endcomment -%}
+<script>
+(function () {
+  var AVAILABLE = ["es", "pt-BR", "de", "fr", "ja", "zh-CN", "ru", "uk"];
+  var CHOICE_KEY = "cwk_lang_choice";
+  var DONE_KEY = "cwk_locale_routed";
+
+  function matchLocale(langs) {
+    for (var i = 0; i < langs.length; i++) {
+      var tag = String(langs[i] || "").toLowerCase();
+      if (!tag) continue;
+      var base = tag.split("-")[0];
+
+      if (base === "en") return null;          // en / en-US / en-GB ... -> stay
+
+      if (base === "zh") {
+        if (/hant|tw|hk|mo/.test(tag)) return null; // Traditional: no version, stay
+        return "zh-CN";                        // zh, zh-hans, zh-cn, zh-sg
+      }
+      if (base === "pt") return "pt-BR";       // pt, pt-BR, pt-PT
+
+      if (AVAILABLE.indexOf(tag) !== -1) return tag;
+      if (AVAILABLE.indexOf(base) !== -1) return base;
+    }
+    return null;                               // nothing matched -> English
+  }
+
+  try {
+    if (sessionStorage.getItem(DONE_KEY)) return;
+    sessionStorage.setItem(DONE_KEY, "1");     // once per session — covers "stay" too
+
+    if (localStorage.getItem(CHOICE_KEY)) return; // explicit choice wins
+
+    var nav = performance.getEntriesByType
+      ? performance.getEntriesByType("navigation")[0] : null;
+    if (nav && nav.type && nav.type !== "navigate") return;
+
+    var langs = (navigator.languages && navigator.languages.length)
+      ? navigator.languages
+      : [navigator.language];
+    var target = matchLocale(langs);
+    if (target) window.location.replace("/" + target + "/");
+  } catch (e) { /* storage blocked: stay on English */ }
+})();
+</script>

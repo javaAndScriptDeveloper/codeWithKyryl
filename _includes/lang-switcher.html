@@ -41,6 +41,15 @@
             if (d) d.removeAttribute('open');
         }
     });
+
+    // An explicit language choice wins over locale auto-routing, forever.
+    // locale-redirect.html reads this key and stands down when it's set.
+    document.addEventListener('click', function(e) {
+        var a = e.target.closest ? e.target.closest('.lang-switcher__menu a[hreflang]') : null;
+        if (a) {
+            try { localStorage.setItem('cwk_lang_choice', a.getAttribute('hreflang')); } catch (err) {}
+        }
+    });
 </script>
 {%- endif -%}
 {%- endif -%}
