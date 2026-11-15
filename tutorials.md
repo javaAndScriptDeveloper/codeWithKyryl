@@ -1,11 +1,11 @@
 ---
 #
-# By default, content added below the "---" mark will appear in the home page
-# between the top bar and the list of recent posts.
-# To change the home page layout, edit the _layouts/home.html file.
-# See: https://jekyllrb.com/docs/themes/#overriding-theme-defaults
+# Tutorials archive (English). Localized versions live at <lang>/tutorials.md and
+# share the `lang_key: tutorials` translation cluster (hreflang + switcher).
 #
 layout: tutorials
-title: "Backend Engineering Tutorials"
-description: "In-depth Java, Spring Boot, PostgreSQL, Kafka and microservices tutorials and deep dives — practical, production-focused engineering write-ups."
+lang: en
+lang_key: tutorials
+title: "Backend & AI Engineering Tutorials"
+description: "In-depth Java, Spring Boot, PostgreSQL, Kafka and microservices tutorials — plus AI-assisted development with DSPy, Claude and Python. Practical, production-focused engineering write-ups."
 ---

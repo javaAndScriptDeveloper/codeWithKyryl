@@ -4,21 +4,30 @@ css:
 - /assets/css/home.css
 ---
 
+{%- assign _lang = page.lang | default: "en" -%}
+{%- assign _t = site.data.locales[_lang] -%}
+{%- comment -%}Locale's articles, excluding shadow drafts (front matter `shadow: true`){%- endcomment -%}
+{%- assign _localized_articles = "" | split: "" -%}
+{%- for a in site.articles -%}
+  {%- if a.lang == _lang and a.shadow != true -%}{%- assign _localized_articles = _localized_articles | push: a -%}{%- endif -%}
+{%- endfor -%}
+{%- assign _localized_articles = _localized_articles | sort: "date" | reverse -%}
+{%- assign _limited_posts = _localized_articles | slice: 0, 3 -%}
+
 <section class="hero" id="home">
     <div class="container">
         <div class="hero-content">
             <h1>CodeWithKyryl</h1>
-            <p class="hero-subtitle">Writing about what actually breaks in prod.</p>
+            <p class="hero-subtitle">{{ _t.home.hero_subtitle | default: "Writing about what actually breaks in prod." }}</p>
         </div>
     </div>
 </section>
 
 <section class="featured-posts" id="tutorials">
     <div class="container">
-        <h2 class="section-title">Latest Transmissions</h2>
+        <h2 class="section-title">{{ _t.home.latest_title | default: "Latest Transmissions" }}</h2>
         <div class="posts-grid">
-            {% assign limited_posts = site.articles | sort: "date" | reverse %}
-            {% for post in limited_posts limit: 3 %}
+            {% for post in _limited_posts %}
             <article class="post-card">
                 <div class="post-image">
                     {% if post.tech_icon %}
@@ -38,7 +47,7 @@ css:
                         {% endif %}
                     </div>
                     <div class="post-meta post-meta--badges">
-                        <span class="post-tag post-tag--article">Article</span>
+                        <span class="post-tag post-tag--article">{{ _t.post.article_badge | default: "Article" }}</span>
                         {% include reading-time.html content=post.content %}
                     </div>
                     <h3><a href="{{ post.url | relative_url }}">{{ post.title }}</a></h3>
@@ -48,13 +57,14 @@ css:
                     <p class="post-excerpt">{{ post.content | strip_html | truncatewords: 20 }}</p>
                     {% endif %}
                     <a href="{{ post.url | relative_url }}" class="subtle-cta">
-                      Continue Reading <i class="fas fa-arrow-right"></i>
+                      {{ _t.home.continue_reading | default: "Continue Reading" }} <i class="fas fa-arrow-right"></i>
                     </a>
                 </div>
             </article>
             {% endfor %}
 
-            {% comment %} Practice sets mixed into the same feed {% endcomment %}
+            {% comment %} Practice sets mixed into the same feed — English-only content, en home only {% endcomment %}
+            {% if _lang == "en" %}
             {% assign all_quizzes = "" | split: "" %}
             {% for item in site.data.quizzes %}{% assign all_quizzes = all_quizzes | push: item[1] %}{% endfor %}
             {% assign latest_quizzes = all_quizzes | sort: "order" %}
@@ -85,26 +95,37 @@ css:
                 </div>
             </article>
             {% endfor %}
+            {% endif %}
 
-            {% if limited_posts.size == 0 and latest_quizzes.size == 0 %}
+            {% if _limited_posts.size == 0 %}
             <div class="no-posts">
                 <p>No posts yet. Check back soon!</p>
             </div>
             {% endif %}
         </div>
-        {% if limited_posts.size > 0 %}
+        {% if _limited_posts.size > 0 %}
         <div class="section-cta">
             <a href="{{ '/tutorials' | relative_url }}" class="view-all-link">
-                View all articles <i class="fas fa-arrow-right"></i>
+                {{ _t.home.view_all_articles | default: "View all articles" }} <i class="fas fa-arrow-right"></i>
             </a>
+            {% if _lang == "en" %}
             <a href="{{ '/practice' | relative_url }}" class="view-all-link">
-                Explore practice <i class="fas fa-arrow-right"></i>
+                {{ _t.home.explore_practice | default: "Explore practice" }} <i class="fas fa-arrow-right"></i>
             </a>
+            {% else %}
+            <a href="{{ '/practice' | relative_url }}" class="view-all-link">
+                {{ _t.home.practice_note_cta | default: "Explore practice in English" }} <i class="fas fa-arrow-right"></i>
+            </a>
+            {% endif %}
         </div>
+        {% if _lang != "en" %}
+        <p class="localized-practice-note">{{ _t.home.practice_note }}</p>
+        {% endif %}
         {% endif %}
     </div>
 </section>
 
+{% if _lang == "en" %}
 <section class="lab-feature" id="production-lab">
     <div class="container">
         <div class="lab-feature-card">
@@ -137,28 +158,23 @@ css:
         </div>
     </div>
 </section>
+{% endif %}
 
 <section class="about" id="about">
     <div class="container">
-        <h2>About</h2>
+        <h2>{{ _t.home.about_title | default: "About" }}</h2>
         <div class="about-content">
-            <p>
-                I'm <span class="about-highlight">Kyryl</span>, a Java developer with solid expertise in building resilient, high-load applications for modern backends.
-            </p>
-            <p>
-                I've worked extensively with <span class="about-highlight">Spring Boot applications</span>, architected scalable <span class="about-highlight">microservices architectures</span>, and streamlined software delivery through advanced <span class="about-highlight">DevOps automation</span>.
-            </p>
-            <p>
-                This blog shares practical insights into modern software architecture — from proven microservice patterns to efficient cloud-native deployment strategies. Join me as we dive into the real-world practice of enterprise Java development and DevOps excellence.
-            </p>
+            <p>{{ _t.home.about_p1 }}</p>
+            <p>{{ _t.home.about_p2 }}</p>
+            <p>{{ _t.home.about_p3 }}</p>
         </div>
     </div>
 </section>
 
 <section class="contact" id="contact">
     <div class="container">
-        <h2 class="contact-title">Let's Connect</h2>
-        <p class="contact-subtitle">Got a question, topic idea, or just want to talk backend? I'm one message away.</p>
+        <h2 class="contact-title">{{ _t.home.contact_title | default: "Let's Connect" }}</h2>
+        <p class="contact-subtitle">{{ _t.home.contact_subtitle | default: "Got a question, topic idea, or just want to talk backend? I'm one message away." }}</p>
         <div class="contact-links">
             <a href="https://www.linkedin.com/in/{{ site.linkedin_username }}/" target="_blank" class="contact-card contact-card--linkedin">
                 <div class="contact-card-icon">

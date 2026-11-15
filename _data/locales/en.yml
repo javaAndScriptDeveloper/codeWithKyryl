@@ -1,0 +1,44 @@
+# English (default) UI strings.
+# Other languages live in sibling files named by locale code (es.yml, ja.yml, ...).
+# Keys are the contract: every locale file must define the same structure.
+# Values may contain inline HTML (e.g. <span class="about-highlight">...</span>).
+
+nav:
+  home: "Home"
+  articles: "Articles"
+  practice: "Practice"
+  about: "About"
+  contact: "Contact"
+
+footer:
+  tagline: "Resilient Java backends. AI tooling held to the same standard."
+
+home:
+  hero_subtitle: "Writing about what actually breaks in prod."
+  latest_title: "Latest Transmissions"
+  article_badge: "Article"
+  continue_reading: "Continue Reading"
+  view_all_articles: "View all articles"
+  explore_practice: "Explore practice"
+  practice_note: "Interactive practice — quizzes and the production incident lab — is currently available in English."
+  practice_note_cta: "Explore practice in English"
+  about_title: "About"
+  about_p1: "I'm <span class=\"about-highlight\">Kyryl</span>. I build <span class=\"about-highlight\">Java backends</span> for a living: Spring Boot services that hold up under load and don't wake me at 3am."
+  about_p2: "Lately a lot of my time goes into <span class=\"about-highlight\">AI tooling</span>: <span class=\"about-highlight\">Claude</span> in the daily workflow, <span class=\"about-highlight\">DSPy</span> for LLM features, Python when Java is the wrong tool. I write about what that actually changes."
+  about_p3: "Both topics get the same treatment here: real code from runnable repos, what worked, what didn't, and what I'd do differently."
+  contact_title: "Let's Connect"
+  contact_subtitle: "Got a question, topic idea, or just want to talk backend? I'm one message away."
+
+tutorials:
+  h1: "Tutorials Archive"
+  subtitle: "Browse all posts by topic"
+  article_badge: "Article"
+  continue_reading: "Continue Reading"
+  no_results_title: "No transmissions found"
+  no_results_text: "No posts match the selected tags. Try adjusting your filter."
+  showing_js: "Showing :start-:end of :total transmissions"
+
+post:
+  article_badge: "Article"
+  min_read: "min read"
+  faq_heading: "Frequently asked questions"

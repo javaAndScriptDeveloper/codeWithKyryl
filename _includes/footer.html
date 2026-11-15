@@ -1,6 +1,8 @@
+{%- assign _lang = page.lang | default: "en" -%}
+{%- assign _t = site.data.locales[_lang] -%}
 <footer>
     <div class="container footer-content">
-        <p class="footer-tagline">{{ site.data.brand.tagline }}</p>
+        <p class="footer-tagline">{{ _t.footer.tagline | default: site.data.brand.tagline }}</p>
         <div class="contact-icons">
             <a href="https://www.linkedin.com/in/{{ site.linkedin_username }}/" target="_blank" aria-label="LinkedIn">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">

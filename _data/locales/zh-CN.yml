@@ -1,0 +1,43 @@
+# Simplified Chinese (zh-CN) UI strings.
+# Structure mirrors en.yml — keys are the contract: every locale file must define the same structure.
+# Values may contain inline HTML (e.g. <span class="about-highlight">...</span>).
+
+nav:
+  home: "首页"
+  articles: "文章"
+  practice: "练习"
+  about: "关于"
+  contact: "联系"
+
+footer:
+  tagline: "高弹性 Java 后端。AI 工具也按同一标准衡量。"
+
+home:
+  hero_subtitle: "只写真正会在生产环境里坏掉的东西。"
+  latest_title: "最新文章"
+  article_badge: "文章"
+  continue_reading: "继续阅读"
+  view_all_articles: "查看全部文章"
+  explore_practice: "探索练习"
+  practice_note: "互动练习（测验与生产事故实验室）目前仅提供英文版。"
+  practice_note_cta: "前往英文版练习"
+  about_title: "关于"
+  about_p1: "我是 <span class=\"about-highlight\">Kyryl</span>，本职是构建<span class=\"about-highlight\">Java 后端</span>：扛得住负载、不会在凌晨三点把我叫醒的 Spring Boot 服务。"
+  about_p2: "最近大量时间花在 <span class=\"about-highlight\">AI 工具</span>上：日常用 <span class=\"about-highlight\">Claude</span>、用 <span class=\"about-highlight\">DSPy</span> 做 LLM 功能、在 Java 不合适的地方用 Python。这个博客记录这些工具到底改变了什么。"
+  about_p3: "两类话题在这里的标准一致：来自可运行仓库的真实代码，哪些可行、哪些不可行、下次会怎么做。"
+  contact_title: "保持联系"
+  contact_subtitle: "有问题、想提选题，或者只是想聊聊后端技术？一条消息就能找到我。"
+
+tutorials:
+  h1: "教程归档"
+  subtitle: "按主题浏览全部文章"
+  article_badge: "文章"
+  continue_reading: "继续阅读"
+  no_results_title: "没有找到相关文章"
+  no_results_text: "没有匹配所选标签的文章，请调整筛选条件后重试。"
+  showing_js: "正在显示 :total 篇文章中的第 :start-:end 篇"
+
+post:
+  article_badge: "文章"
+  min_read: "分钟阅读"
+  faq_heading: "常见问题解答"

@@ -525,3 +525,111 @@ pre { position: relative; }
 
 .view-all-link i { transition: transform 0.2s ease; }
 .view-all-link:hover i { transform: translateX(3px); }
+
+/* ---------------------------------------------
+   Language switcher (header, i18n)
+   --------------------------------------------- */
+.lang-switcher {
+    position: relative;
+    margin-left: 1rem;
+}
+
+.lang-switcher details {
+    position: relative;
+}
+
+.lang-switcher summary {
+    list-style: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-family: var(--font-body);
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--color-text-muted);
+    padding: 0.4rem 0.7rem;
+    border: 1px solid var(--color-border);
+    border-radius: 999px;
+    transition: color 0.2s ease, border-color 0.2s ease;
+    white-space: nowrap;
+}
+
+.lang-switcher summary::-webkit-details-marker {
+    display: none;
+}
+
+.lang-switcher summary:hover {
+    color: var(--color-primary);
+    border-color: var(--color-primary);
+}
+
+.lang-switcher__chev {
+    font-size: 0.6rem;
+    transition: transform 0.2s ease;
+}
+
+.lang-switcher details[open] .lang-switcher__chev {
+    transform: rotate(180deg);
+}
+
+.lang-switcher__menu {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    min-width: 190px;
+    background: #fff;
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.10);
+    list-style: none;
+    padding: 0.35rem;
+    margin: 0;
+    z-index: 1100;
+}
+
+.lang-switcher__menu a {
+    display: block;
+    padding: 0.5rem 0.75rem;
+    border-radius: 7px;
+    text-decoration: none;
+    color: var(--color-text);
+    font-family: var(--font-body);
+    font-size: 0.9rem;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.lang-switcher__menu a:hover {
+    background: rgba(29, 158, 117, 0.08);
+    color: var(--color-primary);
+}
+
+.lang-switcher__menu a.lang-switcher__active {
+    color: var(--color-primary);
+    font-weight: 600;
+    background: rgba(29, 158, 117, 0.10);
+}
+
+/* Localized home pages: note under the section CTA explaining English-only practice */
+.localized-practice-note {
+    text-align: center;
+    color: var(--color-text-muted);
+    font-size: 0.9rem;
+    margin-top: 1.25rem;
+}
+
+@media (max-width: 768px) {
+    .lang-switcher {
+        margin-left: 0;
+    }
+
+    /* Keep switcher beside (not under) the hamburger */
+    .lang-switcher { order: 2; }
+    .nav-toggle { order: 3; }
+
+    .lang-switcher__current {
+        max-width: 90px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+}

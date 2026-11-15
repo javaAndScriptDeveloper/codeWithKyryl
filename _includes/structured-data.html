@@ -4,6 +4,8 @@
   - BreadcrumbList: on article pages, helps Google show breadcrumb rich results.
   These are additive; do not duplicate the BlogPosting block jekyll-seo-tag produces.
 {%- endcomment -%}
+{%- assign _lang = page.lang | default: "en" -%}
+{%- assign _t = site.data.locales[_lang] -%}
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -25,14 +27,14 @@
       "name": {{ site.title | jsonify }},
       "url": "{{ site.url }}/",
       "description": {{ site.description | strip_newlines | strip | jsonify }},
-      "inLanguage": "en",
+      "inLanguage": "{{ _lang }}",
       "publisher": { "@id": "{{ site.url }}/#organization" }
     }{% if page.layout == "post" %},
     {
       "@type": "BreadcrumbList",
       "itemListElement": [
-        { "@type": "ListItem", "position": 1, "name": "Home", "item": "{{ site.url }}/" },
-        { "@type": "ListItem", "position": 2, "name": "Tutorials", "item": "{{ '/tutorials/' | absolute_url }}" },
+        { "@type": "ListItem", "position": 1, "name": {{ _t.nav.home | default: "Home" | jsonify }}, "item": "{{ site.url }}{% if _lang != 'en' %}/{{ _lang }}/{% endif %}" },
+        { "@type": "ListItem", "position": 2, "name": {{ _t.nav.articles | default: "Tutorials" | jsonify }}, "item": "{{ site.url }}{% if _lang != 'en' %}/{{ _lang }}{% endif %}/tutorials/" },
         { "@type": "ListItem", "position": 3, "name": {{ page.title | jsonify }}, "item": "{{ page.url | absolute_url }}" }
       ]
     }{% endif %}

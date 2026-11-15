@@ -141,7 +141,13 @@ document.addEventListener('DOMContentLoaded', function() {
         const totalPosts = filteredPosts.length;
         const showingStart = Math.min(startIndex + 1, totalPosts);
         const showingEnd = Math.min(endIndex, totalPosts);
-        paginationInfo.textContent = `Showing ${showingStart}-${showingEnd} of ${totalPosts} transmissions`;
+        // Localized "Showing X-Y of Z" via data attributes set by the layout
+        const lang = document.documentElement.lang || 'en';
+        const strings = (window.CWK_I18N && window.CWK_I18N[lang]) || window.CWK_I18N.en;
+        paginationInfo.textContent = strings.showing
+            .replace(':start', showingStart)
+            .replace(':end', showingEnd)
+            .replace(':total', totalPosts);
     }
 
     function renderPagination() {

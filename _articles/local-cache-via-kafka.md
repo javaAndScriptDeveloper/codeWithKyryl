@@ -1,5 +1,6 @@
 ---
 layout: post
+lang_key: local-cache-via-kafka
 title: "Can Kafka Replace Redis for Cache Synchronization? A Production Answer"
 date: 2026-08-08
 tags: [kafka, spring-boot, java, distributed-systems]

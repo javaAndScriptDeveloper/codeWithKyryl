@@ -1,0 +1,44 @@
+# Chaînes d'interface en français.
+# Les autres langues vivent dans des fichiers frères nommés par code de locale (es.yml, ja.yml, ...).
+# Les clés sont le contrat : chaque fichier de locale doit définir la même structure.
+# Les valeurs peuvent contenir du HTML inline (ex. <span class="about-highlight">...</span>).
+
+nav:
+  home: "Accueil"
+  articles: "Articles"
+  practice: "Pratique"
+  about: "À propos"
+  contact: "Contact"
+
+footer:
+  tagline: "Des backends Java résilients. Les outils d'IA jugés selon le même critère."
+
+home:
+  hero_subtitle: "J'écris sur ce qui casse réellement en prod."
+  latest_title: "Dernières transmissions"
+  article_badge: "Article"
+  continue_reading: "Poursuivre la lecture"
+  view_all_articles: "Voir tous les articles"
+  explore_practice: "Explorer la pratique"
+  practice_note: "La partie pratique — quiz et laboratoire d'incidents de production — est actuellement disponible en anglais."
+  practice_note_cta: "Explorer la pratique en anglais"
+  about_title: "À propos"
+  about_p1: "Je suis <span class=\"about-highlight\">Kyryl</span>. Je construis des <span class=\"about-highlight\">backends Java</span> : des services Spring Boot qui tiennent la charge et ne me réveillent pas à 3h du matin."
+  about_p2: "Dernièrement, une bonne partie de mon temps passe sur les <span class=\"about-highlight\">outils IA</span> : <span class=\"about-highlight\">Claude</span> au quotidien, <span class=\"about-highlight\">DSPy</span> pour les fonctionnalités LLM, Python quand Java n'est pas le bon outil. J'écris sur ce que cela change vraiment."
+  about_p3: "Les deux sujets reçoivent le même traitement ici : du vrai code issu de repos exécutables, ce qui a marché, ce qui a raté, et ce que je ferais autrement."
+  contact_title: "Restons en contact"
+  contact_subtitle: "Une question, une idée de sujet, ou juste envie de parler backend ? Je ne suis qu'à un message."
+
+tutorials:
+  h1: "Archives des tutoriels"
+  subtitle: "Parcourez tous les articles par thème"
+  article_badge: "Article"
+  continue_reading: "Poursuivre la lecture"
+  no_results_title: "Aucune transmission trouvée"
+  no_results_text: "Aucun article ne correspond aux tags sélectionnés. Essayez d'ajuster votre filtre."
+  showing_js: "Affichage de :start-:end sur :total transmissions"
+
+post:
+  article_badge: "Article"
+  min_read: "min de lecture"
+  faq_heading: "Questions fréquentes"

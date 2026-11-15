@@ -1,0 +1,43 @@
+# Portuguese (Brazil) UI strings.
+# Keys are the contract: every locale file must define the same structure.
+# Values may contain inline HTML (e.g. <span class="about-highlight">...</span>).
+
+nav:
+  home: "Início"
+  articles: "Artigos"
+  practice: "Prática"
+  about: "Sobre"
+  contact: "Contato"
+
+footer:
+  tagline: "Backends Java resilientes. Ferramentas de IA cobradas pelo mesmo padrão."
+
+home:
+  hero_subtitle: "Escrevendo sobre o que realmente quebra em produção."
+  latest_title: "Últimas transmissões"
+  article_badge: "Artigo"
+  continue_reading: "Continuar lendo"
+  view_all_articles: "Ver todos os artigos"
+  explore_practice: "Explorar a prática"
+  practice_note: "A prática interativa — quizzes e o laboratório de incidentes de produção — está disponível, por enquanto, apenas em inglês."
+  practice_note_cta: "Explorar a prática em inglês"
+  about_title: "Sobre"
+  about_p1: "Sou <span class=\"about-highlight\">Kyryl</span>. Construo <span class=\"about-highlight\">backends Java</span>: serviços Spring Boot que aguentam carga e não me acordam às 3h da manhã."
+  about_p2: "Nos últimos tempos, boa parte do meu tempo vai para <span class=\"about-highlight\">ferramentas de IA</span>: <span class=\"about-highlight\">Claude</span> no dia a dia, <span class=\"about-highlight\">DSPy</span> para funcionalidades com LLM, Python quando Java não é a ferramenta certa. Escrevo sobre o que isso muda de fato."
+  about_p3: "Os dois temas recebem o mesmo tratamento aqui: código real de repos executáveis, o que funcionou, o que não funcionou e o que eu faria diferente."
+  contact_title: "Vamos conversar"
+  contact_subtitle: "Tem uma dúvida, uma ideia de tema, ou quer só bater papo sobre backend? Estou a uma mensagem de distância."
+
+tutorials:
+  h1: "Arquivo de tutoriais"
+  subtitle: "Navegue por todos os posts por tópico"
+  article_badge: "Artigo"
+  continue_reading: "Continuar lendo"
+  no_results_title: "Nenhuma transmissão encontrada"
+  no_results_text: "Nenhum post corresponde às tags selecionadas. Tente ajustar o filtro."
+  showing_js: "Mostrando :start-:end de :total transmissões"
+
+post:
+  article_badge: "Artigo"
+  min_read: "min de leitura"
+  faq_heading: "Perguntas frequentes"
