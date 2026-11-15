@@ -1,5 +1,6 @@
 ---
 layout: post
+lang_key: outboxes
 title: "The Transactional Outbox Pattern: From a Single Task to a Production-Grade Async Engine"
 date: 2026-06-07
 tags: [pattern, postgres, spring-boot, java]

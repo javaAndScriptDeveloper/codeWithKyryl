@@ -5,6 +5,8 @@ css:
 - /assets/css/post.css
 ---
 
+{%- assign _lang = page.lang | default: "en" -%}
+{%- assign _t = site.data.locales[_lang] -%}
 <div class="post-wrapper">
     <h1 class="post-title">{{ page.title }}</h1>
     <div class="post-meta">
@@ -13,7 +15,7 @@ css:
         {% endfor %}
     </div>
     <div class="post-meta post-meta--badges">
-        <span class="post-tag post-tag--article">Article</span>
+        <span class="post-tag post-tag--article">{{ _t.post.article_badge | default: "Article" }}</span>
         {% include reading-time.html content=content %}
     </div>
     <div class="post-content">

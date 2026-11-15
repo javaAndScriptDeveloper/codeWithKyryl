@@ -5,9 +5,11 @@
         answer: "X is ... (markdown allowed)"
   FAQPage schema is a strong signal for Google rich results and AI answer engines.
 {%- endcomment -%}
+{%- assign _lang = page.lang | default: "en" -%}
+{%- assign _t = site.data.locales[_lang] -%}
 {%- if page.faq -%}
 <section class="post-faq" aria-labelledby="faq-heading">
-  <h2 id="faq-heading">Frequently asked questions</h2>
+  <h2 id="faq-heading">{{ _t.post.faq_heading | default: "Frequently asked questions" }}</h2>
   {%- for item in page.faq %}
   <details class="faq-item">
     <summary class="faq-question">{{ item.question }}</summary>

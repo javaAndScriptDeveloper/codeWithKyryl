@@ -7,13 +7,17 @@ permalink: /llms.txt
 
 > {{ site.description | strip_newlines | strip }}
 
-Author: {{ site.author }} — backend engineer writing senior-level deep dives on Java,
-Spring Boot, Apache Kafka, PostgreSQL, and distributed-systems patterns. Articles are
-hands-on, production-focused, and built around real working code.
+Author: {{ site.author }} — backend engineer. Deep dives on Java, Spring Boot, Apache Kafka,
+PostgreSQL and distributed systems, plus what he learns running LLM tools in real work: Claude,
+DSPy, Python, and tool comparisons. Articles are hands-on and built around real working code.
 
 ## Articles
-{% assign sorted = site.articles | sort: "date" | reverse %}{% for post in sorted %}
+{% assign sorted = "" | split: "" %}{% for a in site.articles %}{% if a.lang == "en" and a.shadow != true %}{% assign sorted = sorted | push: a %}{% endif %}{% endfor %}{% assign sorted = sorted | sort: "date" | reverse %}{% for post in sorted %}
 - [{{ post.title }}]({{ post.url | absolute_url }}): {{ post.excerpt | default: post.description | strip_html | strip_newlines | truncate: 200 }}{% endfor %}
+
+## Translated articles
+{% assign translated = "" | split: "" %}{% for a in site.articles %}{% if a.lang and a.lang != "en" and a.shadow != true %}{% assign translated = translated | push: a %}{% endif %}{% endfor %}{% assign translated = translated | sort: "date" | reverse %}{% if translated.size > 0 %}{% for post in translated %}
+- [{{ post.title }} — {{ site.language_names[post.lang] | default: post.lang }}]({{ post.url | absolute_url }}): {{ post.description | default: post.excerpt | strip_html | strip_newlines | truncate: 200 }}{% endfor %}{% else %}English is currently the only published language.{% endif %}
 
 ## Practice sets
 {% assign quizzes = site.data.quizzes | sort %}{% for item in quizzes %}{% assign q = item[1] %}

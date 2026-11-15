@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ page.lang | default: 'en' }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,6 +7,9 @@
     <!-- SEO Meta Tags (title, description, canonical, Open Graph, Twitter card,
          JSON-LD, webmaster verifications, twitter:image — all from jekyll-seo-tag) -->
     {% seo %}
+
+    <!-- hreflang alternates for translation clusters (en is x-default) -->
+    {% include hreflang.html %}
 
     <!-- Extra structured data: Organization, WebSite, breadcrumbs -->
     {% include structured-data.html %}

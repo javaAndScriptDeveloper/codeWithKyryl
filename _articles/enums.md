@@ -1,5 +1,6 @@
 ---
 layout: post
+lang_key: enums
 title: "Storing Enums in the Database: @Enumerated, Postgres Enum Types, and Lookup Tables"
 date: 2026-06-29
 tags: [hibernate, postgres, spring-boot, java]

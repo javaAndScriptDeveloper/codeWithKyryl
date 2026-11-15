@@ -1,0 +1,43 @@
+# Japanese UI strings (ja).
+# Keys mirror en.yml — every locale file must define the same structure.
+# Values may contain inline HTML (e.g. <span class="about-highlight">...</span>).
+
+nav:
+  home: "ホーム"
+  articles: "記事"
+  practice: "演習"
+  about: "私について"
+  contact: "お問い合わせ"
+
+footer:
+  tagline: "耐障害性のあるJavaバックエンド。AIツールも同じ基準で評価する。"
+
+home:
+  hero_subtitle: "書いているのは、本番で実際に壊れるものの話です。"
+  latest_title: "最新記事"
+  article_badge: "記事"
+  continue_reading: "続きを読む"
+  view_all_articles: "すべての記事を見る"
+  explore_practice: "演習を見る"
+  practice_note: "インタラクティブな演習（クイズと本番インシデントラボ）は現在英語のみで提供しています。"
+  practice_note_cta: "英語で演習を見る"
+  about_title: "私について"
+  about_p1: "私は<span class=\"about-highlight\">Kyryl</span>。<span class=\"about-highlight\">Javaバックエンド</span>が本業です。負荷に耐え、深夜3時に起こさないSpring Bootサービスを作っています。"
+  about_p2: "最近は<span class=\"about-highlight\">AIツール</span>にも多くの時間を割いています。日々のワークフローでの<span class=\"about-highlight\">Claude</span>、LLM機能のための<span class=\"about-highlight\">DSPy</span>、Javaが適さない場面でのPython。それが実際に何を変えるのかを書いています。"
+  about_p3: "どちらのテーマも同じ扱いです。動くリポジトリの実際のコード、うまくいったこと、いかなかったこと、そして次にやるならどうするか。"
+  contact_title: "つながりましょう"
+  contact_subtitle: "ご質問でも、記事テーマの提案でも、ただバックエンド談義がしたいときでも。メッセージをいただければすぐに応じます。"
+
+tutorials:
+  h1: "記事アーカイブ"
+  subtitle: "すべての記事をトピック別に閲覧"
+  article_badge: "記事"
+  continue_reading: "続きを読む"
+  no_results_title: "記事が見つかりません"
+  no_results_text: "選択したタグに一致する記事はありません。フィルターを調整してみてください。"
+  showing_js: ":total件中 :start〜:end件を表示"
+
+post:
+  article_badge: "記事"
+  min_read: "分で読める"
+  faq_heading: "よくある質問"

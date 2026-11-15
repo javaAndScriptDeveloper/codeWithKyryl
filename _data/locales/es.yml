@@ -1,0 +1,44 @@
+# Spanish UI strings (es).
+# Other languages live in sibling files named by locale code (en.yml, ja.yml, ...).
+# Keys are the contract: every locale file must define the same structure.
+# Values may contain inline HTML (e.g. <span class="about-highlight">...</span>).
+
+nav:
+  home: "Inicio"
+  articles: "Artículos"
+  practice: "Práctica"
+  about: "Sobre mí"
+  contact: "Contacto"
+
+footer:
+  tagline: "Backends Java resilientes. Herramientas de IA juzgadas con el mismo estándar."
+
+home:
+  hero_subtitle: "Escribo sobre lo que de verdad falla en producción."
+  latest_title: "Últimas transmisiones"
+  article_badge: "Artículo"
+  continue_reading: "Seguir leyendo"
+  view_all_articles: "Ver todos los artículos"
+  explore_practice: "Explorar la práctica"
+  practice_note: "La práctica interactiva — cuestionarios y el laboratorio de incidentes de producción — está disponible por ahora solo en inglés."
+  practice_note_cta: "Explorar la práctica en inglés"
+  about_title: "Sobre mí"
+  about_p1: "Soy <span class=\"about-highlight\">Kyryl</span>. Construyo <span class=\"about-highlight\">backends Java</span>: servicios Spring Boot que aguantan carga y no me despiertan a las 3am."
+  about_p2: "Últimamente buena parte de mi tiempo va en <span class=\"about-highlight\">herramientas de IA</span>: <span class=\"about-highlight\">Claude</span> en el trabajo diario, <span class=\"about-highlight\">DSPy</span> para funcionalidades con LLM, Python cuando Java no es la herramienta adecuada. Escribo sobre lo que eso cambia de verdad."
+  about_p3: "Ambos temas reciben el mismo trato aquí: código real de repos ejecutables, qué funcionó, qué no, y qué haría distinto."
+  contact_title: "Conectemos"
+  contact_subtitle: "¿Tienes una pregunta, una idea de tema o simplemente quieres hablar de backend? Estoy a un mensaje de distancia."
+
+tutorials:
+  h1: "Archivo de tutoriales"
+  subtitle: "Explora todas las publicaciones por tema"
+  article_badge: "Artículo"
+  continue_reading: "Seguir leyendo"
+  no_results_title: "No se encontraron transmisiones"
+  no_results_text: "Ninguna publicación coincide con las etiquetas seleccionadas. Prueba a ajustar tu filtro."
+  showing_js: "Mostrando :start-:end de :total transmisiones"
+
+post:
+  article_badge: "Artículo"
+  min_read: "min de lectura"
+  faq_heading: "Preguntas frecuentes"

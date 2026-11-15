@@ -1,3 +1,5 @@
+{%- assign _lang = page.lang | default: "en" -%}
+{%- assign _t = site.data.locales[_lang] -%}
 <header>
     <nav class="container">
         <a href="{{ '/' | relative_url }}" class="logo">
@@ -8,12 +10,13 @@
             <span class="hamburger"></span>
         </button>
         <ul class="nav-links">
-            <li><a href="{{ '/' | relative_url }}">Home</a></li>
-            <li><a href="{{ '/tutorials' | relative_url }}">Articles</a></li>
-            <li><a href="{{ '/practice' | relative_url }}">Practice</a></li>
-            <li><a href="{{ '/#about' | relative_url }}">About</a></li>
-            <li><a href="{{ '/#contact' | relative_url }}">Contact</a></li>
+            <li><a href="{{ '/' | relative_url }}">{{ _t.nav.home | default: "Home" }}</a></li>
+            <li><a href="{{ _t.nav.articles_url | default: '/tutorials' | relative_url }}">{{ _t.nav.articles | default: "Articles" }}</a></li>
+            <li><a href="{{ '/practice' | relative_url }}">{{ _t.nav.practice | default: "Practice" }}</a></li>
+            <li><a href="{{ '/#about' | relative_url }}">{{ _t.nav.about | default: "About" }}</a></li>
+            <li><a href="{{ '/#contact' | relative_url }}">{{ _t.nav.contact | default: "Contact" }}</a></li>
         </ul>
+        {% include lang-switcher.html %}
     </nav>
 </header>
 

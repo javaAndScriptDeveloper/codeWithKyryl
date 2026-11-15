@@ -1,0 +1,55 @@
+{%- comment -%}
+  Language switcher for the header. Renders only when the current page belongs to
+  a translation cluster (`lang_key`) with more than one version. Uses the same
+  cluster logic as _includes/hreflang.html.
+{%- endcomment -%}
+{%- assign _group = page.lang_key -%}
+{%- if _group -%}
+{%- assign _alts = "" | split: "" -%}
+{%- for d in site.articles -%}
+  {%- if d.lang_key == _group -%}{%- assign _alts = _alts | push: d -%}{%- endif -%}
+{%- endfor -%}
+{%- for p in site.pages -%}
+  {%- if p.lang_key == _group -%}{%- assign _alts = _alts | push: p -%}{%- endif -%}
+{%- endfor -%}
+{%- assign _alts = _alts | sort: "lang" -%}
+{%- if _alts.size > 1 -%}
+<div class="lang-switcher" id="lang-switcher">
+    <details>
+        <summary aria-label="Switch language" title="Switch language">
+            <i class="fas fa-globe"></i>
+            <span class="lang-switcher__current">{{ site.language_names[page.lang] | default: page.lang | default: "English" }}</span>
+            <i class="fas fa-chevron-down lang-switcher__chev"></i>
+        </summary>
+        <ul class="lang-switcher__menu">
+            {%- for a in _alts -%}
+            <li>
+                <a href="{{ a.url | relative_url }}"{% if a.lang == page.lang %} class="lang-switcher__active" aria-current="true"{% endif %} hreflang="{{ a.lang }}">
+                    {{ site.language_names[a.lang] | default: a.lang }}
+                </a>
+            </li>
+            {%- endfor -%}
+        </ul>
+    </details>
+</div>
+<script>
+    // Close the dropdown when clicking elsewhere
+    document.addEventListener('click', function(e) {
+        var sw = document.getElementById('lang-switcher');
+        if (sw && !sw.contains(e.target)) {
+            var d = sw.querySelector('details');
+            if (d) d.removeAttribute('open');
+        }
+    });
+
+    // An explicit language choice wins over locale auto-routing, forever.
+    // locale-redirect.html reads this key and stands down when it's set.
+    document.addEventListener('click', function(e) {
+        var a = e.target.closest ? e.target.closest('.lang-switcher__menu a[hreflang]') : null;
+        if (a) {
+            try { localStorage.setItem('cwk_lang_choice', a.getAttribute('hreflang')); } catch (err) {}
+        }
+    });
+</script>
+{%- endif -%}
+{%- endif -%}

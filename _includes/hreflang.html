@@ -1,0 +1,26 @@
+{%- comment -%}
+  Emits rel="alternate" hreflang links for the current page's translation cluster.
+  Grouping: every page/doc that participates in i18n carries a `lang_key` (e.g.
+  "dspy-gepa-vs-miprov2", "home", "tutorials") plus a `lang`. English is the
+  x-default. Pages without `lang_key` (quizzes, labs — English-only) emit nothing.
+{%- endcomment -%}
+{%- assign _group = page.lang_key -%}
+{%- if _group -%}
+{%- assign _alts = "" | split: "" -%}
+{%- for d in site.articles -%}
+  {%- if d.lang_key == _group -%}{%- assign _alts = _alts | push: d -%}{%- endif -%}
+{%- endfor -%}
+{%- for p in site.pages -%}
+  {%- if p.lang_key == _group -%}{%- assign _alts = _alts | push: p -%}{%- endif -%}
+{%- endfor -%}
+{%- if _alts.size > 1 -%}
+{%- assign _en = false -%}
+{%- for a in _alts -%}
+<link rel="alternate" hreflang="{{ a.lang }}" href="{{ a.url | absolute_url }}">
+{%- if a.lang == "en" -%}{%- assign _en = a -%}{%- endif -%}
+{%- endfor -%}
+{%- if _en -%}
+<link rel="alternate" hreflang="x-default" href="{{ _en.url | absolute_url }}">
+{%- endif -%}
+{%- endif -%}
+{%- endif -%}
