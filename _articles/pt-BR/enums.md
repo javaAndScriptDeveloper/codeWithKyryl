@@ -11,7 +11,7 @@ description: "Guia prático para armazenar enums no PostgreSQL com Hibernate: @E
 tech_icon: "fas fa-database"
 faq:
   - question: "Devo usar @Enumerated ORDINAL ou STRING?"
-    answer: "Use **STRING**. O `@Enumerated(ORDINAL)` armazena a posição do enum (0, 1, 2…), então inserir uma nova constante em qualquer lugar que não seja o fim re-aponta silenciosamente todas as linhas existentes. O `@Enumerated(STRING)` armazena o nome da constante ('PAID'), que é autodescritivo, debugável direto do SQL e imune a reordenação. Os poucos bytes extras de armazenamento são irrelevantes perto da segurança."
+    answer: "Use **STRING**. O `@Enumerated(ORDINAL)` armazena a posição do enum (0, 1, 2…), então inserir uma nova constante em qualquer lugar que não seja o fim faz todas as linhas existentes passarem a apontar, em silêncio, para outro valor. O `@Enumerated(STRING)` armazena o nome da constante ('PAID'), que é autodescritivo, fácil de depurar direto no SQL e imune a reordenação. Os poucos bytes extras de armazenamento são irrelevantes perto da segurança."
   - question: "O que quebra quando adiciono um valor de enum no meio com ORDINAL?"
     answer: "Toda linha armazenada *depois* da constante inserida passa a decodificar para o valor errado. Se `SHIPPED` era o ordinal 2 e você insere `PACKED` antes dele, `SHIPPED` vira 3 — mas todas as linhas existentes ainda guardam o inteiro 2, que agora lê-se como `PACKED`. O banco não muda; a sua interpretação dele muda. Proteja-se com um teste de unidade que fixe o `ordinal()` de cada constante."
   - question: "Como armazenar um enum como um tipo enum do Postgres?"
@@ -42,7 +42,7 @@ Stack: **Java, Spring Boot, Hibernate, PostgreSQL**.
 <p class="post-tldr-title">TL;DR</p>
 
 - O `@Enumerated(ORDINAL)` armazena a **posição** do enum — compacto, mas inserir um valor no meio corrompe silenciosamente todas as linhas seguintes. Se precisar usá-lo, **fixe os ordinais com um teste de unidade**.
-- O `@Enumerated(STRING)` armazena o **nome da constante** — autodescritivo, debugável, imune a reordenação. Este é o padrão sensato.
+- O `@Enumerated(STRING)` armazena o **nome da constante** — autodescritivo, fácil de depurar, imune a reordenação. Este é o padrão sensato.
 - Não se conforme com um `varchar` puro — defina um **tipo `ENUM` real do Postgres** para que o próprio banco rejeite valores inválidos.
 - Um **`AttributeConverter`** persiste um código estável, desacoplado do nome Java, então **renomear deixa de ser um problema de banco de dados**.
 - Uma **tabela de lookup** só vale a pena quando os valores carregam dados de negócio editáveis — não como solução para renomeações.
@@ -198,8 +198,8 @@ Um pedido `PAID` armazena a string literal `'PAID'`. Três coisas melhoram imedi
 
 - **Reordenar é inofensivo.** O valor é o próprio nome; posições não importam mais. Adicione
   `PACKED` onde quiser.
-- **Fica debugável.** `SELECT * FROM orders_string WHERE status = 'PAID'` lê-se como inglês. Sem
-  anel decodificador, sem precisar juntar o seu código-fonte Java de cabeça.
+- **Dá para depurar.** `SELECT * FROM orders_string WHERE status = 'PAID'` lê-se como inglês. Sem
+  tabela de decodificação e sem precisar consultar o código Java de cabeça.
 - **Dumps e logs são autodescritivos.** Uma linha em um export CSV significa algo por si só.
 
 Sim, `'DELIVERED'` custa mais bytes que `3`. Para a esmagadora maioria das tabelas, essa diferença é
@@ -223,7 +223,7 @@ renomeações em algo totalmente indolor.
 
 ---
 
-## Parte 3 — Bom Estilo: Um Tipo Enum Real do Postgres
+## Parte 3 — Do Jeito Certo: Um Tipo Enum Real do Postgres
 
 Ambas as opções acima armazenam em uma coluna que o banco não entende de verdade — um `smallint` ou um
 `varchar` que *por acaso* contém valores de enum. O Postgres pode fazer melhor. Ele tem tipos enum de
@@ -428,7 +428,7 @@ em toda query para sobreviver a uma renomeação.
 
 O que a tabela de lookup realmente adiciona, nesse caso, é custo permanente: toda leitura faz join ou
 carrega uma segunda query, o status vira um relacionamento gerenciado em vez de um valor, e um
-`switch` exaustivo em tempo de compilação sobre os seus estados vira uma busca em runtime que pode
+`switch` exaustivo em tempo de compilação sobre os seus estados vira uma consulta em runtime que pode
 falhar. Você trocou um valor que o seu compilador entende por uma linha que ele não entende, para
 comprar uma flexibilidade que um ciclo de vida fixo nunca usa.
 
@@ -481,7 +481,7 @@ trade-off que fez.
 A boa notícia é que os defaults são fáceis: armazene o nome, deixe o banco validá-lo e desacople o
 código do identificador quando precisar. Reserve a tabela de lookup para os casos que são
 genuinamente um catálogo, e não um enum. Acerte isso uma vez e os seus status continuam entediantes —
-o que é o maior elogio que se pode pagar a uma coluna.
+o que é o maior elogio que uma coluna pode receber.
 
 ---
 

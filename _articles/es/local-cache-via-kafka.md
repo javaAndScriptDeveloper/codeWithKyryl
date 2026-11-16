@@ -56,8 +56,8 @@ ejemplo ejecutable.
 
 Asume que la aplicación tiene configuración o datos de referencia que cada instancia necesita con
 frecuencia: reglas de features, ajustes de enrutamiento, configuración por tenant, o datos
-similares. Debe ser rápido de obtener, pero también debe poder cambiar sin redeplegar todos los
-pods.
+similares. Debe ser rápido de obtener, pero también debe poder cambiar sin volver a desplegar todos
+los pods.
 
 Una caché Redis compartida es una solución natural. Cada pod lee el mismo valor gestionado
 centralmente, así que tras una actualización hay una sola vista actual que consultar. El trade-off
@@ -78,7 +78,7 @@ esquemas como Avro, Protobuf o JSON Schema.
 Ni Kafka ni Redis son inmunes a las fallas. Pero si Kafka ya es una dependencia, usarlo para
 distribuir esta configuración puede evitar agregar Redis como otra dependencia en tiempo de
 ejecución y otro sistema que operar. Eso reduce el número de piezas móviles y modos de falla a
-considerar; no hace desaparecer las fallas de Kafka. Este es un trade que vale la pena solo
+considerar; no hace desaparecer las fallas de Kafka. Es un trade-off que solo compensa
 cuando la consistencia eventual es aceptable para los datos.
 
 Kafka también puede desacoplar el servicio que publica la configuración de los servicios que la
@@ -144,10 +144,9 @@ Hay dos fases: **reconstruir la réplica local** y luego **mantenerla actualizad
 3. Durante la asignación, la compuerta de readiness lee dos números por cada partición: la
    posición actual del consumidor y el end offset de la partición. Ese end offset se convierte en
    el **objetivo fijo de arranque**.
-4. El listener aplica cada registro a un mapa local thread-safe. Solo después de que el listener
-   retorna exitosamente el aspecto de tracking avanza la posición procesada de esa partición. Una
-   falla del listener, por lo tanto, no puede hacer que la compuerta declare que el registro
-   fallido fue aplicado.
+4. El listener aplica cada registro a un mapa local thread-safe. Solo cuando el listener
+   retorna con éxito, el aspecto de tracking avanza la posición procesada de esa partición. Así,
+   una falla del listener no puede hacer que la compuerta dé por aplicado el registro fallido.
 5. Cuando cada partición alcanza su objetivo capturado, el readiness cambia a `UP`. La plataforma
    de despliegue puede ahora enrutar peticiones al pod, y los jobs programados protegidos por
    readiness pueden ejecutarse. Las lecturas usan el mapa local y no llaman a Kafka.
@@ -173,8 +172,8 @@ desde el principio y reconstruir la configuración actual sin pedirle a otro ser
 precaliente su caché.
 
 Esto funciona mejor para un topic de upsert pequeño y de volumen relativamente bajo: feature
-flags, reglas de enrutamiento, configuración por tenant, o configuración similar. No es un buen
-defecto para un dataset grande o de alta rotación que cada pod tendría que reprocesar y retener en
+flags, reglas de enrutamiento, configuración por tenant, o configuración similar. No es una buena
+opción por defecto para un dataset grande o de alta rotación que cada pod tendría que reprocesar y retener en
 memoria.
 
 Crea suficientes particiones para permitir que un pod reprocese el topic concurrentemente con
@@ -258,8 +257,8 @@ lo suficiente para que los consumidores observen el borrado, y luego eventualmen
 cero debe completar su escaneo para tener garantizado un snapshot válido del estado final, como
 explica la
 [referencia de configuración del broker de Kafka](https://kafka.apache.org/42/configuration/broker-configs/#brokerconfigs_log.cleaner.delete.retention.ms).
-Configura esa ventana a partir del tiempo de replay del peor caso medido; no asumas que el defecto
-es automáticamente seguro para un topic grande.
+Configura esa ventana a partir del tiempo de replay del peor caso medido; no asumas que el valor por defecto
+es seguro sin más para un topic grande.
 
 <figure class="post-figure">
   <img src="{{ '/assets/img/articles/kafka-tombstone-flow.svg' | relative_url }}"
@@ -290,7 +289,7 @@ hasta que el replay haya terminado.
 
 Esta es la parte fácil de saltarse y cara de saltarse. Un pod que reporta "listo" en el momento en
 que le asignan particiones está listo solo de nombre — puede haber reprocesado tres registros de
-tres mil. Las peticiones golpean una caché casi vacía; un job programado corre con defectos
+tres mil. Las peticiones golpean una caché casi vacía; un job programado corre con valores por defecto
 desactualizados; nadie se entera hasta que alguien pregunta por qué el pod 14 se comportó distinto
 durante dos minutos después de un deploy.
 
@@ -418,7 +417,7 @@ Docker marca la aplicación como sana solo cuando el replay termina. Esto reflej
 disponibilidad de una plataforma de despliegue; el estado de salud de Compose en sí no controla el
 enrutamiento del tráfico.
 
-Cuarto, proteger jobs programados (o cualquier otro método de bean) de la misma manera, sin
+Cuarto, protege los jobs programados (o cualquier otro método de bean) de la misma manera, sin
 repetir el check `if (!tracker.isFullyConsumed()) return;` en cada punto de llamada: una segunda
 anotación, `@ReadinessGated`, más su propio pequeño aspecto que se salta la llamada por completo
 hasta que la compuerta se abre — esto es con lo que `CacheSnapshotJob.logSnapshot` de arriba está

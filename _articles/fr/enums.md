@@ -11,7 +11,7 @@ description: "Stocker des enums dans PostgreSQL avec Hibernate : ORDINAL vs STRI
 tech_icon: "fas fa-database"
 faq:
   - question: "Faut-il utiliser @Enumerated ORDINAL ou STRING ?"
-    answer: "Utilisez **STRING**. `@Enumerated(ORDINAL)` stocke la position de l'enum (0, 1, 2…), donc insérer une nouvelle constante ailleurs qu'à la fin re-pointe silencieusement toutes les lignes existantes. `@Enumerated(STRING)` stocke le nom de la constante ('PAID'), ce qui est auto-descriptif, débogable directement en SQL et immunisé contre les réordonnancements. Les quelques octets de stockage supplémentaires sont insignifiants face à la sécurité."
+    answer: "Utilisez **STRING**. `@Enumerated(ORDINAL)` stocke la position de l'enum (0, 1, 2…), donc insérer une nouvelle constante ailleurs qu'à la fin re-pointe silencieusement toutes les lignes existantes. `@Enumerated(STRING)` stocke le nom de la constante ('PAID'), ce qui est auto-descriptif, débogable directement en SQL et immunisé contre les réordonnancements. Les quelques octets de stockage supplémentaires ne pèsent rien face à cette sécurité."
   - question: "Que se casse-t-il quand j'ajoute une valeur d'enum au milieu avec ORDINAL ?"
     answer: "Chaque ligne stockée *après* la constante insérée se décode désormais vers la mauvaise valeur. Si `SHIPPED` avait l'ordinal 2 et que vous insérez `PACKED` avant lui, `SHIPPED` devient 3 — mais toutes les lignes existantes contiennent toujours l'entier 2, qui se lit maintenant `PACKED`. La base ne change pas ; c'est votre interprétation qui change. Protégez-vous avec un test unitaire qui fige l'`ordinal()` de chaque constante."
   - question: "Comment stocker un enum comme type enum Postgres ?"
@@ -197,8 +197,8 @@ Une commande `PAID` stocke littéralement la chaîne `'PAID'`. Trois choses s'am
 
 - **Le réordonnancement est inoffensif.** La valeur est son propre nom ; les positions n'ont plus d'importance.
   Ajoutez `PACKED` où vous voulez.
-- **C'est débogable.** `SELECT * FROM orders_string WHERE status = 'PAID'` se lit comme un livre ouvert. Pas
-  de bague décodeuse, pas de jointure mentale avec votre source Java.
+- **C'est débogable.** `SELECT * FROM orders_string WHERE status = 'PAID'` se lit comme de l'anglais. Pas
+  de table de correspondance à garder en tête, pas de jointure mentale avec votre code Java.
 - **Les dumps et les logs sont auto-descriptifs.** Une ligne dans un export CSV signifie quelque chose par
   elle-même.
 
@@ -223,7 +223,7 @@ non-événement complet.
 
 ---
 
-## Partie 3 — Le bon goût : un vrai type enum Postgres
+## Partie 3 — Les bonnes pratiques : un vrai type enum Postgres
 
 Les deux options ci-dessus stockent dans une colonne que la base ne comprend pas vraiment — un `smallint` ou un
 `varchar` qui *se trouve* contenir des valeurs d'enum. Postgres peut faire mieux. Il a des types enum de
@@ -403,7 +403,7 @@ WHERE  o.id = ?;
 
 ### ✅ Quand cela vaut la peine
 
-La table de référence achète une vraie chose : l'ensemble des valeurs, et les métadonnées attachées à chacune,
+La table de référence apporte une vraie chose : l'ensemble des valeurs, et les métadonnées attachées à chacune,
 vivent dans des **données** au lieu de vivre dans le **code**. C'est réellement précieux quand :
 
 - **Chaque valeur porte des données métier modifiables** — un libellé affiché, un ordre de tri, une couleur, un
@@ -431,13 +431,13 @@ chaque requête pour survivre à un renommage.
 Ce que la table de référence ajoute réellement, dans ce cas, c'est un coût permanent : chaque lecture joint ou
 embarque une seconde requête, le statut devient une relation gérée au lieu d'une valeur, et un `switch`
 exhaustif à la compilation sur vos états devient une recherche à l'exécution qui peut échouer. Vous avez échangé
-une valeur que votre compilateur comprend contre une ligne qu'il ne comprend pas, pour acheter une flexibilité
+une valeur que votre compilateur comprend contre une ligne qu'il ne comprend pas, pour une flexibilité
 qu'un cycle de vie figé n'utilisera jamais.
 
 Ma règle porte donc sur **ce qu'est la valeur**, pas sur les renommages :
 
 - Si la valeur est **une identité seulement** — c'est `SHIPPED`, point — gardez-la en enum. Mappez-la avec
-  `@Enumerated(STRING)`, adossez-la à un type enum Postgres, et sortez un `AttributeConverter` quand vous voulez
+  `@Enumerated(STRING)`, adossez-la à un type enum Postgres, et ajoutez un `AttributeConverter` quand vous voulez
   des renommages gratuits.
 - Si la valeur est **un enregistrement** — elle a des champs édités, par des humains, à l'exécution — alors ce
   n'a jamais vraiment été un enum. Donnez-lui une table.
@@ -481,7 +481,7 @@ change, ce qui arrive toujours, généralement bien après que vous avez oublié
 
 La bonne nouvelle, c'est que les défauts sont simples : stockez le nom, laissez la base le valider, et découplez
 le code de l'identifiant quand c'est nécessaire. Réservez la table de référence aux cas qui sont réellement un
-catalogue et pas un enum. Faites cela correctement une fois et vos statuts restent ennuyeux — ce qui est le
+catalogue et pas un enum. Faites cela correctement une fois et vos statuts resteront ennuyeux, ce qui est le
 plus beau compliment que l'on puisse faire à une colonne.
 
 ---

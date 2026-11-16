@@ -6,98 +6,95 @@ permalink: /fr/2026/11/14/dspy-gepa-vs-miprov2/
 title: "DSPy expliqué aux ingénieurs backend : signatures, optimiseurs, et GEPA vs MIPROv2"
 date: 2026-11-14
 tags: [dspy, llm, python, prompt-engineering]
-excerpt: "DSPy traite les prompts comme des artefacts de build compilés plutôt que du source édité à la main. Comment fonctionne le framework — signatures, modules, optimiseurs — et un duel de ses deux principales stratégies d'optimisation, GEPA vs MIPROv2, avec un exemple exécutable de triage d'incidents Spring Boot."
-description: "Qu'est-ce que DSPy ? L'optimisation des prompts expliquée aux ingénieurs : signatures, modules, GEPA vs MIPROv2 — exemple exécutable et guide de décision."
+excerpt: "DSPy traite les prompts comme des artefacts de build compilés, et non comme du code source retouché à la main. Fonctionnement du framework (signatures, modules, optimiseurs), puis comparaison de ses deux principales stratégies d'optimisation, GEPA et MIPROv2, avec un exemple exécutable de triage d'incidents Spring Boot."
+description: "Qu'est-ce que DSPy ? L'optimisation de prompts expliquée aux ingénieurs : signatures, modules, GEPA vs MIPROv2, avec un exemple exécutable et un guide de décision."
 tech_icon: "fas fa-wand-magic-sparkles"
 faq:
   - question: "Qu'est-ce que DSPy, en termes simples ?"
-    answer: "DSPy est un framework Python open source de Stanford NLP qui remplace les prompts écrits à la main par des **déclarations de tâches typées et un compilateur optimisant**. Vous décrivez *ce que* une tâche prend en entrée et produit en sortie (une signature), composez les étapes en Python ordinaire (modules), écrivez une métrique, et un optimiseur génère automatiquement les prompts et les exemples few-shot qui maximisent cette métrique. Quand vous changez de modèle, vous recompilez au lieu de réécrire les prompts."
+    answer: "DSPy est un framework Python open source de Stanford NLP qui remplace les prompts écrits à la main par des **déclarations de tâches typées et un compilateur optimisant**. Vous décrivez *ce que* la tâche prend en entrée et produit en sortie (une signature), vous composez les étapes en Python ordinaire (des modules) et vous écrivez une métrique ; un optimiseur génère alors automatiquement les prompts et les exemples few-shot qui maximisent cette métrique. Quand vous changez de modèle, vous recompilez au lieu de réécrire les prompts."
   - question: "Quelle est la différence entre GEPA et MIPROv2 dans DSPy ?"
-    answer: "Ce sont tous deux des optimiseurs DSPy, mais ils cherchent différemment. **MIPROv2** pré-génère une grille fixe d'instructions candidates et d'ensembles de démos few-shot, puis choisit la meilleure combinaison par optimisation bayésienne sur des évaluations en minibatch. **GEPA** (Genetic-Pareto) exécute une *évolution réflexive* : un LLM de réflexion puissant réécrit les instructions en s'appuyant sur du feedback en langage naturel expliquant pourquoi une prédiction était fausse, et un front de Pareto conserve tout candidat qui est le meilleur sur au moins un cas de validation. Dans l'article GEPA, il a battu MIPROv2 de plus de 10 % en agrégé sur six tâches à coût comparable. Règle pratique : métrique riche en feedback → GEPA ; métrique scalaire simple ou besoin de sélection de démos → MIPROv2."
+    answer: "Ce sont deux optimiseurs DSPy, mais ils ne cherchent pas de la même façon. **MIPROv2** pré-génère une grille fixe d'instructions candidates et d'ensembles de démos few-shot, puis retient la meilleure combinaison par optimisation bayésienne, en évaluant sur des minibatchs. **GEPA** (Genetic-Pareto) procède par *évolution réflexive* : un LLM de réflexion puissant réécrit les instructions à partir d'un feedback en langage naturel expliquant pourquoi une prédiction était fausse, et un front de Pareto conserve tout candidat qui est le meilleur sur au moins un cas de validation. L'article GEPA le donne devant MIPROv2 de plus de 10 points sur six tâches, à coût comparable (environ 86 $ contre 76 $ de dépense LM dans leurs essais avec GPT-4.1 Mini). Règle pratique : métrique riche en feedback → GEPA ; métrique scalaire simple ou besoin de sélection de démos → MIPROv2."
   - question: "Combien d'exemples faut-il pour optimiser un programme avec DSPy ?"
-    answer: "La documentation DSPy recommande **au moins 30 exemples pour voir de la valeur et environ 300 pour une qualité de production**. Répartissez à peu près 20 % pour l'entraînement et 80 % pour la validation — le contraire de l'entraînement de réseaux de neurones — car les optimiseurs notent chaque candidat sur le jeu de validation. Règle empirique de la doc : environ 10 exemples suffisent pour BootstrapFewShot, 50+ pour BootstrapFewShotWithRandomSearch, et 200+ rendent les longues exécutions de MIPROv2 dignes d'intérêt. GEPA fonctionne à partir d'une poignée d'exemples si votre métrique renvoie un bon feedback textuel."
+    answer: "La documentation DSPy recommande **au moins 30 exemples pour commencer à voir un gain, et environ 300 pour une qualité de production**. Répartissez-les à peu près à 20 % pour l'entraînement et 80 % pour la validation (l'inverse de l'entraînement d'un réseau de neurones), car les optimiseurs évaluent chaque candidat sur le jeu de validation. Règle empirique de la doc : une dizaine d'exemples suffisent pour BootstrapFewShot, 50 et plus pour BootstrapFewShotWithRandomSearch, et à partir de 200 les longues exécutions de MIPROv2 deviennent rentables. GEPA peut se contenter d'une poignée d'exemples si votre métrique renvoie un bon feedback textuel."
   - question: "DSPy fine-tune-t-il les poids du modèle ?"
-    answer: "Pas par défaut. Les optimiseurs phares (MIPROv2, GEPA, COPRO) ajustent les **paramètres du prompt** : instructions et démonstrations few-shot. Vos appels à l'API du modèle restent en lecture seule. DSPy 3.x propose aussi des optimiseurs apprenant les poids — `dspy.GRPO` pour l'apprentissage par renforcement et `dspy.BetterTogether` pour combiner optimisation de prompts et fine-tuning — mais pour des modèles accessibles uniquement par API, l'optimisation de prompts est la partie que vous utiliserez réellement."
+    answer: "Pas par défaut. Les optimiseurs phares (MIPROv2, GEPA, COPRO) ajustent les **paramètres du prompt** : instructions et démonstrations few-shot. Les poids du modèle restent intacts. DSPy 3.x fournit aussi des optimiseurs qui entraînent les poids (`BootstrapFinetune`, un module GRPO expérimental pour l'apprentissage par renforcement, et `BetterTogether` pour enchaîner optimisation de prompts et fine-tuning), mais avec des modèles accessibles uniquement par API, c'est l'optimisation de prompts que vous utiliserez en pratique."
   - question: "DSPy fonctionne-t-il avec des modèles locaux ou auto-hébergés ?"
-    answer: "Oui. `dspy.LM` supporte **Ollama** (`ollama_chat/llama3.2:1b`), vLLM, SGLang et tout endpoint compatible OpenAI via `openai/...` avec un `api_base` personnalisé. Les instructions optimisées se transfèrent aussi bien entre modèles : l'article GEPA rapporte que des prompts évolués sur Qwen3-8B ont gagné environ 9 % en étant réutilisés sur GPT-4.1 Mini — c'est le cas d'usage derrière la réduction de coût d'environ 75x rapportée par Shopify en migrant une tâche GPT-5 vers un petit modèle local."
+    answer: "Oui. `dspy.LM` prend en charge **Ollama** (`ollama_chat/llama3.2:1b`), vLLM, SGLang et tout endpoint compatible OpenAI via `openai/...` avec un `api_base` personnalisé. Les instructions optimisées se transfèrent aussi d'un modèle à l'autre : l'article GEPA rapporte que des prompts évolués sur Qwen3-8B ont gagné environ 9 % une fois réutilisés sur GPT-4.1 Mini. C'est le schéma qui se cache derrière la réduction de coût d'environ 75x annoncée par Shopify en passant une tâche de GPT-5 à un petit modèle Qwen (chiffre cité par la doc DSPy d'après une présentation de Shopify ; je n'ai pas retrouvé de publication d'origine, donc à prendre comme une affirmation de l'éditeur)."
   - question: "Quand ne pas utiliser DSPy ?"
-    answer: "Passez votre chemin quand vous n'avez **aucun moyen de noter les sorties** — chaque optimiseur vaut ce que vaut votre métrique. Évitez-le pour un prompt unique et stable sur un problème résolu, où la taxe d'abstraction du framework n'achète rien. Et si vous pouvez vous offrir des rollouts illimités pour du fine-tuning par RL, l'optimisation des poids peut encore battre l'évolution de prompts — l'article GEPA est explicite : l'évolution de prompts gagne quand les rollouts sont coûteux ou que les poids sont inaccessibles."
+    answer: "Passez votre chemin si vous n'avez **aucun moyen d'évaluer les sorties** : un optimiseur ne vaut que ce que vaut votre métrique. Évitez-le aussi pour un prompt unique et stable sur un problème déjà résolu, où l'abstraction supplémentaire ne rapporte rien. Et si vous pouvez vous offrir autant de rollouts que nécessaire pour un fine-tuning par RL, l'optimisation des poids peut encore battre l'évolution de prompts : l'article GEPA le dit explicitement, l'évolution de prompts l'emporte quand les rollouts sont coûteux ou que les poids sont inaccessibles."
 ---
 
 # DSPy expliqué aux ingénieurs backend : signatures, optimiseurs, et GEPA vs MIPROv2
 
-Si vous avez maintenu un service Spring Boot appelé à durer, vous connaissez déjà la
+Si vous avez maintenu un service Spring Boot de longue durée, vous connaissez déjà la
 différence entre configuration et code. Vous n'éditez pas à la main les valeurs de
-`application.yml` sur les machines de production, et vous n'ajustez pas la taille des
-pools de connexions au doigt mouillé — vous les déclarez, vous les mesurez, et vous les
-modifiez via un processus revu et reproductible.
+`application.yml` sur les machines de production, et vous ne réglez pas la taille des
+pools de connexions au feeling : vous les déclarez, vous les mesurez, et vous les
+modifiez par un processus relu et reproductible.
 
-Appliquez maintenant cette lentille au développement LLM. La plupart des équipes « font
-de l'IA » comme on faisait de l'ops en 2009 : quelqu'un édite à la main une chaîne de
-prompt dans une PR, jauge cinq sorties dans un notebook, livre, et six semaines plus tard
-une montée de version du modèle casse le tout silencieusement.
+Appliquez maintenant ce regard au développement LLM. La plupart des équipes « font de
+l'IA » comme on faisait de l'ops en 2009 : quelqu'un retouche à la main une chaîne de
+prompt dans une PR, jette un œil à cinq sorties dans un notebook, livre, et six semaines
+plus tard une montée de version du modèle casse tout en silence.
 
-**DSPy** ([dspy.ai](https://dspy.ai)) est le framework de Stanford NLP qui dit :
-stop. Traitez le prompt comme un **artefact compilé**. Vous écrivez le *code source* —
-une déclaration typée de la tâche, composée en Python ordinaire — plus une **métrique**
-qui note les sorties. Un composant du framework appelé **optimiseur** génère et ajuste
-alors les prompts réels automatiquement, selon votre métrique, sur vos données.
+**DSPy** ([dspy.ai](https://dspy.ai)) est le framework de Stanford NLP qui dit : stop.
+Traitez le prompt comme un **artefact compilé**. Vous écrivez le *code source* (une
+déclaration typée de la tâche, composée en Python ordinaire) plus une **métrique** qui
+évalue les sorties. Un composant du framework appelé **optimiseur** génère et ajuste
+ensuite automatiquement les prompts réels, selon votre métrique et sur vos données.
 
-Cet article explique comment cela fonctionne, puis approfondit la question à laquelle vous
-serez réellement confronté une fois adopté : **quel optimiseur utiliser**. Les deux
-principales stratégies aujourd'hui sont **MIPROv2** (recherche bayésienne sur les
-instructions et les exemples few-shot) et **GEPA** (évolution réflexive des prompts sur
-un front de Pareto, ICLR 2026 Oral). Elles cherchent différemment, coûtent différemment,
-et attendent des choses différentes de votre métrique.
+Cet article explique comment cela fonctionne, puis creuse la question qui se posera
+vraiment une fois DSPy adopté : **quel optimiseur choisir**. Les deux grandes stratégies
+actuelles sont **MIPROv2** (recherche bayésienne sur les instructions et les exemples
+few-shot) et **GEPA** (évolution réflexive des prompts sur un front de Pareto, ICLR 2026
+Oral). Elles ne cherchent pas de la même façon, ne coûtent pas la même chose et n'attendent
+pas la même chose de votre métrique.
 
-Tout est ancré dans un petit exemple exécutable que j'ai construit pour cet article :
-un programme de **triage d'incidents de production Spring Boot** qui classe des lignes de
-log et des stack traces en catégories de cause racine. C'est le domaine où ce blog vit
-habituellement — et c'est assez petit pour que l'optimisation coûte des centimes,
-pas des dollars.
+Tout repose sur un petit exemple exécutable que j'ai construit pour cet article : un
+programme de **triage d'incidents de production Spring Boot** qui classe des lignes de
+log et des stack traces par catégorie de cause racine. C'est le terrain habituel de ce
+blog, et c'est assez petit pour qu'une optimisation complète reste peu coûteuse.
 
-Stack : **Python, DSPy 3.5, n'importe quel fournisseur de LLM**.
+Stack : **Python 3.11+, DSPy 3.5, n'importe quel fournisseur de LLM**.
 
 <div class="post-tldr" markdown="1">
 <p class="post-tldr-title">TL;DR</p>
 
-- **DSPy = les prompts comme artefacts de build.** Vous déclarez une `Signature` (entrées/sorties typées), composez des `Module`s en Python, écrivez une métrique — et un **optimiseur** compile le tout en instructions ajustées + exemples few-shot. Les changements de modèle deviennent des recompilations, pas des réécritures de prompts.
-- La boucle centrale est partout la même : **programme + une trentaine d'exemples étiquetés + métrique → `optimizer.compile(program, trainset=...)` → un artefact sauvegardé et diffable.** Aucune chaîne de prompt dans votre source.
-- **MIPROv2** = propose une grille de candidats (instructions × démos), choisit le gagnant par **optimisation bayésienne** sur des évals en minibatch. Excellent polyvalent ; veut 200+ exemples pour les longues exécutions ; métrique = simple float.
-- **GEPA** = **évolution réflexive** : un LLM puissant réécrit les instructions en s'appuyant sur du *feedback textuel* expliquant pourquoi les prédictions étaient fausses, et un **front de Pareto** conserve les candidats qui gagnent sur n'importe quel cas isolé. A battu MIPROv2 de **plus de 10 %** sur six tâches de benchmark à coût comparable (ICLR 2026 Oral), et égale le fine-tuning RL avec jusqu'à **35x moins de rollouts**.
-- Règle de décision : **la métrique peut expliquer les erreurs en mots → GEPA. La métrique est un scalaire boîte noire, ou vous avez besoin de sélection de démos → MIPROv2.** Les deux laissent votre code de programme intact.
+- **DSPy = les prompts comme artefacts de build.** Vous déclarez une `Signature` (entrées/sorties typées), vous composez des `Module`s en Python, vous écrivez une métrique, et un **optimiseur** compile le tout en instructions ajustées + exemples few-shot. Changer de modèle devient une recompilation, pas une réécriture de prompts.
+- La boucle centrale est partout la même : **programme + une trentaine d'exemples étiquetés + métrique → `optimizer.compile(program, trainset=...)` → un artefact sauvegardé et diffable.** Aucune chaîne de prompt dans votre code source.
+- **MIPROv2** = propose une grille de candidats (instructions × démos) et retient le gagnant par **optimisation bayésienne** sur des évaluations en minibatch. Bon généraliste ; veut 200+ exemples pour les longues exécutions ; la métrique est un simple float.
+- **GEPA** = **évolution réflexive** : un LLM puissant réécrit les instructions à partir d'un *feedback textuel* expliquant pourquoi les prédictions étaient fausses, et un **front de Pareto** conserve les candidats qui gagnent sur au moins un cas. Il devance MIPROv2 de **plus de 10 points** sur six tâches de benchmark à coût comparable (ICLR 2026 Oral), et fait mieux que le fine-tuning GRPO avec jusqu'à **35x moins de rollouts**.
+- Règle de décision : **la métrique sait expliquer les erreurs en mots → GEPA. La métrique est un scalaire en boîte noire, ou vous avez besoin de sélection de démos → MIPROv2.** Dans les deux cas, le code de votre programme reste intact.
 </div>
 
 ---
 
 ## Qu'est-ce que DSPy ?
 
-DSPy est un framework Python open source, initialement construit par Stanford NLP
-(le projet est désormais développé sous Databricks), publié pour la première fois comme
-compilateur Demonstrate-Search-Predict en décembre 2022. La ligne actuelle,
-DSPy 3.x, est l'un des frameworks LLM les plus adoptés — des millions de
-téléchargements mensuels et environ 40k étoiles GitHub — et le slogan de sa documentation
-résume la philosophie en cinq mots : **« Program, don't prompt. »**
-(programmez, ne promptez pas).
+DSPy est un framework Python open source de Stanford NLP. Il est né des travaux de
+recherche Demonstrate-Search-Predict (décembre 2022), et la ligne 3.x actuelle est très
+utilisée : plusieurs millions de téléchargements PyPI par mois et environ 40k étoiles
+GitHub à l'heure où j'écris. Le slogan du projet résume sa philosophie : programmer les
+modèles de langage plutôt que leur écrire des prompts.
 
-Le postulat : un prompt n'est pas du code source. C'est un *résultat* — le produit
-compilé de trois entrées que vous *pouvez* maintenir comme du code source :
+Le postulat : un prompt n'est pas du code source. C'est un *résultat*, le produit compilé
+de trois entrées que vous *pouvez* maintenir comme du code source :
 
-1. **Ce qu'est la tâche** — une interface typée : entrées, sorties, contraintes.
-2. **Comment les étapes se composent** — du flux de contrôle Python ordinaire.
-3. **Ce que « correct » signifie** — une fonction de métrique sur des exemples étiquetés.
+1. **Ce qu'est la tâche** : une interface typée (entrées, sorties, contraintes).
+2. **Comment les étapes s'enchaînent** : du flux de contrôle Python ordinaire.
+3. **Ce que « correct » veut dire** : une fonction de métrique sur des exemples étiquetés.
 
-Écrivez à la main #1–#3, et laissez un algorithme produire le prompt. Quand le modèle
-change, vous ne réécrivez pas le prompt — vous **recompilez**.
+Écrivez à la main les points 1 à 3, et laissez un algorithme produire le prompt. Quand le
+modèle change, vous ne réécrivez pas le prompt : vous **recompilez**.
 
 Si vous avez déjà maintenu en parallèle un prompt GPT-4, un prompt Claude et un prompt
-Llama local pour la même fonctionnalité, vous comprenez déjà pourquoi cela compte. C'est
-le même instinct qui nous a menés de la config serveur éditée à la main à l'infrastructure
-déclarée.
+Llama local pour la même fonctionnalité, vous comprenez déjà pourquoi c'est important.
+C'est le même réflexe qui nous a fait passer de la config serveur éditée à la main à
+l'infrastructure déclarative.
 
 ## Comment fonctionne DSPy : signatures, modules, optimiseurs
 
-DSPy a exactement trois abstractions à apprendre. C'est tout le framework.
+DSPy repose sur exactement trois abstractions. C'est tout le framework.
 
 ```mermaid
 flowchart LR
@@ -112,7 +109,7 @@ flowchart LR
 ### Qu'est-ce qu'une signature DSPy ?
 
 Une **signature** est une spécification déclarative du comportement entrée/sortie d'une
-tâche — pensez à une signature de méthode avec de la sémantique, pas seulement des types.
+tâche : pensez à une signature de méthode dotée de sémantique, pas seulement de types.
 Les noms de champs portent du sens ; DSPy les transforme en prompts en coulisses.
 
 ```python
@@ -137,29 +134,29 @@ class IncidentTriage(dspy.Signature):
     action: str = dspy.OutputField(desc="One-sentence remediation")
 ```
 
-Notez ce qu'une signature vous donne qu'une chaîne de prompt ne donne pas : **de la
-structure que le parser peut imposer**. `root_cause` est un type `Literal` — le modèle ne
-peut pas répondre `Probably database stuff` ; il doit renvoyer l'une des six valeurs,
-sinon l'adaptateur de DSPy retente et lève une exception. C'est la même mémoire musculaire
-que de mapper du JSON vers un DTO typé au lieu d'analyser des chaînes à la main.
+Une signature apporte ce qu'une chaîne de prompt n'apporte pas : **une structure que le
+parser peut imposer**. `root_cause` est un type `Literal` : le modèle ne peut pas répondre
+`Probably database stuff` ; il doit renvoyer l'une des six valeurs, sinon l'adaptateur de
+DSPy réessaie puis lève une exception. C'est le même réflexe que de mapper du JSON vers un
+DTO typé plutôt que de parser des chaînes à la main.
 
 ### Qu'est-ce qu'un module DSPy ?
 
-Un **module** est une stratégie de prompting réutilisable généralisée à n'importe quelle
-signature — l'idée du `nn.Module` de PyTorch, appliquée aux prompts. Tous sont construits
+Un **module** est une stratégie de prompting réutilisable, généralisée à n'importe quelle
+signature : l'idée du `nn.Module` de PyTorch, appliquée aux prompts. Tous sont construits
 sur `dspy.Predict` ; les plus connus :
 
 | Module | Stratégie qu'il abstrait |
 |---|---|
 | `dspy.Predict(sig)` | Complétion directe |
 | `dspy.ChainOfThought(sig)` | Ajoute une étape de raisonnement avant la réponse |
-| `dspy.ReAct(sig, tools=[...])` | Boucle raisonnement + usage d'outils pour les agents |
+| `dspy.ReAct(sig, tools=[...])` | Boucle raisonnement + appels d'outils pour les agents |
 | `dspy.ProgramOfThought(sig)` | Génère et exécute du code pour répondre |
-| `dspy.BestOfN(sig, N)` | Échantillonne N candidats, garde le mieux noté |
+| `dspy.BestOfN(sig, N)` | Échantillonne N candidats et garde le mieux noté |
 
-Votre programme est une sous-classe de `dspy.Module` dont le `forward()` compose
-des sous-modules en Python ordinaire — conditionnels, boucles, vos propres classes. Voici
-le modèle *entier* de notre exemple de triage d'incidents :
+Votre programme est une sous-classe de `dspy.Module` dont le `forward()` compose des
+sous-modules en Python ordinaire : conditions, boucles, vos propres classes. Voici le
+modèle *complet* de notre exemple de triage d'incidents :
 
 ```python
 class IncidentTriageProgram(dspy.Module):
@@ -171,27 +168,27 @@ class IncidentTriageProgram(dspy.Module):
         return self.triage(incident_report=incident_report)
 ```
 
-Regardez ce qui **ne figure pas** dans ce fichier : pas de texte de prompt, pas d'exemples
-few-shot, pas de nom de modèle, pas de température. Tout cela existe — mais comme
-*paramètres*, et c'est exactement ce qui les rend optimisables. Appeler le programme
-renvoie des champs typés (`root_cause`, `severity`, `action`) plus un champ `reasoning`
-que `ChainOfThought` ajoute pour l'étape de réflexion.
+Regardez ce qui **n'est pas** dans ce fichier : ni texte de prompt, ni exemples few-shot,
+ni nom de modèle, ni température. Tout cela existe, mais sous forme de *paramètres*, et
+c'est exactement ce qui les rend optimisables. L'appel du programme renvoie des champs
+typés (`root_cause`, `severity`, `action`) plus un champ `reasoning` que `ChainOfThought`
+ajoute pour l'étape de raisonnement.
 
 ### Qu'est-ce qu'un optimiseur DSPy ?
 
-Un **optimiseur** (anciennement appelé *teleprompter*) est un algorithme qui ajuste les
-paramètres de votre programme — les instructions et/ou les démos few-shot — pour
-maximiser votre métrique. Une démo few-shot est un exemple entrée→sortie résolu injecté
-dans le prompt ; une instruction est la directive de niveau système que DSPy génère par
-module.
+Un **optimiseur** (autrefois appelé *teleprompter*) est un algorithme qui ajuste les
+paramètres de votre programme, c'est-à-dire les instructions et/ou les démos few-shot,
+pour maximiser votre métrique. Une démo few-shot est un exemple résolu entrée→sortie
+injecté dans le prompt ; une instruction est la directive de niveau système que DSPy
+génère pour chaque module.
 
-`optimizer.compile(program, trainset=...)` est littéralement une étape de compilation :
-il exécute votre programme sur des données, mesure, cherche, et renvoie un **programme
+`optimizer.compile(program, trainset=...)` est littéralement une étape de compilation : il
+exécute votre programme sur les données, mesure, cherche, et renvoie un **programme
 compilé** dont les prédicteurs portent désormais des instructions et des démos ajustées.
-Vous le sauvegardez avec `program.save("optimized.json")` — un artefact diffable et
-revoyable, de la même façon que vous reliriez un script de migration.
+Vous le sauvegardez avec `program.save("optimized.json")` : un artefact diffable et relisible,
+comme vous relisez un script de migration.
 
-Le côté évaluation tient en un appel :
+Côté évaluation, tout tient en un appel :
 
 ```python
 evaluate = dspy.Evaluate(
@@ -203,36 +200,37 @@ evaluate = dspy.Evaluate(
 result = evaluate(program)
 ```
 
-Les recommandations de dimensionnement de la doc DSPy : **~30 exemples étiquetés pour
-voir de la valeur, ~300 pour une qualité de production** — répartis ~20 % train / 80 %
-validation, car les optimiseurs notent chaque candidat sur la validation. C'est
-délibérément l'*opposé* de la pratique du deep learning : vous n'ajustez pas des poids,
-vous cherchez dans un espace bien plus petit, et le jeu de validation est la boussole.
+Les recommandations de dimensionnement de la doc DSPy : **environ 30 exemples étiquetés
+pour commencer à voir un gain, environ 300 pour une qualité de production**, répartis à
+~20 % pour l'entraînement et ~80 % pour la validation, car les optimiseurs évaluent chaque
+candidat sur la validation. C'est volontairement l'*inverse* de la pratique en deep
+learning : vous n'ajustez pas des poids, vous explorez un espace bien plus petit, et le
+jeu de validation sert de boussole.
 
-Une dernière chose à intégrer : **votre métrique est le contrat**. Chaque optimiseur de
-cet article vaut ce que vaut la fonction qui note les sorties. Pour de la classification,
-une métrique d'égalité exacte convient. Pour des tâches floues, DSPy fournit
-`SemanticF1` — lui-même implémenté comme un petit programme DSPy — et vous pouvez écrire
-des métriques de type assertion qui renvoient un crédit partiel.
+Une dernière chose à bien intégrer : **votre métrique est le contrat**. Chaque optimiseur
+présenté ici ne vaut que ce que vaut la fonction qui évalue les sorties. Pour de la
+classification, une métrique d'égalité exacte suffit. Pour des tâches plus floues, DSPy
+fournit `dspy.evaluate.SemanticF1` (lui-même implémenté comme un petit programme DSPy), et
+vous pouvez écrire des métriques qui renvoient un crédit partiel.
 
 ---
 
 ## Un exemple concret : triage d'incidents Spring Boot
 
 Assez de théorie. Le dépôt compagnon de cet article implémente une tâche que tout
-ingénieur backend reconnaît : le triage d'astreinte. Étant donné une ligne de log ou un
-extrait de stack trace, classer la **cause racine** (six catégories), la **sévérité**
-(P1/P2/P3), et produire un correctif en une phrase.
+ingénieur backend connaît : le triage en astreinte. À partir d'une ligne de log ou d'un
+extrait de stack trace, il faut classer la **cause racine** (six catégories) et la
+**sévérité** (P1/P2/P3), et produire un correctif en une phrase.
 
-Le jeu de données compte 24 incidents fabriqués à la main, délibérément réalistes —
-timeouts de pool Hikari, `NoSuchMethodError` après une montée de version de Jackson, une
-méthode `@Transactional` retenant une connexion durant un appel distant lent, un pod
+Le jeu de données compte 24 incidents fabriqués à la main, volontairement réalistes :
+timeouts du pool Hikari, `NoSuchMethodError` après une montée de version de Jackson,
+méthode `@Transactional` qui garde une connexion pendant un appel distant lent, pod
 OOMKilled dont le heap va bien mais pas le metaspace… 14 pour l'entraînement, 10 pour la
-validation. Volontairement minuscule : la doc de DSPy dit que la valeur commence autour de
-30 exemples, et cela maintient toute l'exécution dans la gamme du centime.
+validation. C'est minuscule exprès : la doc de DSPy situe le début des gains autour de 30
+exemples, et cela garde chaque exécution peu coûteuse.
 
-La métrique a deux variantes — et cette scission est la clé de la question GEPA vs
-MIPROv2 plus loin :
+La métrique existe en deux variantes, et cette séparation est la clé de la question GEPA
+vs MIPROv2 plus loin :
 
 ```python
 def triage_metric(example, pred, trace=None) -> float:
@@ -258,39 +256,39 @@ def triage_metric_with_feedback(example, pred, trace=None, pred_name=None, pred_
                            feedback=" ".join(problems) or "Correct root cause and severity.")
 ```
 
-Même tâche, même notation — une version répond à *« combien ? »*, l'autre répond aussi à
-*« pourquoi c'est faux ? »*. Gardez cela en tête ; c'est sur le point de compter
-énormément.
+Même tâche, même notation : une version répond à *« combien ? »*, l'autre répond aussi à
+*« pourquoi c'est faux ? »*. Cette différence sépare les deux optimiseurs ci-dessous.
 
 ## Les principales stratégies d'optimisation
 
-DSPy livre environ une douzaine d'optimiseurs en quatre familles. Les deux entre lesquels
-vous choisirez réellement sont les deux derniers.
+DSPy fournit environ une douzaine d'optimiseurs répartis en quatre familles. Ceux entre
+lesquels vous aurez réellement à choisir sont les deux derniers.
 
-| Optimiseur | Ce qu'il ajuste | Stratégie de recherche | Données requises |
+| Optimiseur | Ce qu'il ajuste | Stratégie de recherche | Données nécessaires |
 |---|---|---|---|
 | `BootstrapFewShot` | Démos seulement | Exécute le teacher, garde les traces qui passent la métrique | ~10+ |
 | `BootstrapFewShotWithRandomSearch` | Démos seulement | Bootstrapping + recherche aléatoire sur des variantes | 50+ |
-| `COPRO` | Instructions seulement | Hill-climbing par montée de coordonnées sur des réécritures | quelconque |
+| `COPRO` | Instructions seulement | Hill-climbing par montée de coordonnées sur des réécritures | indifférent |
 | `MIPROv2` | Instructions **+ démos** | Propose une grille de candidats, **optimisation bayésienne** | 200+ pour les longues exécutions |
 | `GEPA` | Instructions (et code, via `dspy.Flex`) | **Évolution réflexive** sur un front de Pareto | une poignée, si la métrique donne du feedback |
 
 ### MIPROv2 : recherche bayésienne sur les instructions et les démos
 
 **MIPROv2** (Multiprompt Instruction PRoposal Optimizer v2) est le cheval de trait de
-DSPy — la réponse par défaut de longue date à « optimise, tout simplement ». Il s'exécute
-en trois étapes :
+DSPy, la réponse par défaut de longue date à « optimise-moi ça ». Il s'exécute en trois
+étapes :
 
-1. **Bootstrap des démos** — crée `num_candidates` ensembles d'exemples few-shot :
-   certains copiés des étiquettes, certains *bootstrappés* en exécutant votre propre
+1. **Bootstrap des démos** : crée `num_candidates` jeux d'exemples few-shot, certains
+   recopiés depuis les étiquettes, d'autres *bootstrappés* en exécutant votre propre
    programme et en gardant les traces dont les sorties passent la métrique.
-2. **Propose des instructions** — un `prompt_model` écrit des instructions candidates
-   pour chaque module, ancrées dans un résumé du jeu de données, le code source de votre
-   programme, les démos bootstrappées et un conseil de créativité aléatoire.
-3. **Recherche bayésienne** — échantillonne des combinaisons (instruction, démo), évalue
-   chacune sur un minibatch de 35 exemples, met à jour un modèle de substitution, et
-   ré-échantillonne là où il prédit une amélioration. Évals de validation complètes toutes
-   les quelques étapes. Après `num_trials`, le meilleur programme gagne.
+2. **Proposition d'instructions** : un `prompt_model` écrit des instructions candidates
+   pour chaque module, en s'appuyant sur un résumé du jeu de données, le code source de
+   votre programme, les démos bootstrappées et une « astuce de créativité » tirée au hasard.
+3. **Recherche bayésienne** : échantillonne des combinaisons (instruction, démo), évalue
+   chacune sur un minibatch de 35 exemples, met à jour un modèle de substitution et
+   ré-échantillonne là où il prédit une amélioration. Une évaluation complète sur la
+   validation a lieu toutes les quelques étapes. Après `num_trials`, le meilleur programme
+   l'emporte.
 
 ```python
 optimizer = dspy.MIPROv2(
@@ -308,18 +306,18 @@ optimized = optimizer.compile(
 optimized.save("optimized/miprov2_triage.json")
 ```
 
-Le modèle mental est une **grille de candidats figée explorée par un échantillonneur
-intelligent**. Cela a une conséquence réelle : MIPROv2 ne peut choisir que parmi les
-instructions candidates que son proposeur a pensé à générer en amont. Si aucune d'elles
-n'encode l'intuition métier dont votre tâche avait besoin (« reconnaître la signature de
-la stack trace avant de juger la sévérité »), la recherche bayésienne ne peut pas
-l'inventer — elle ne peut que choisir le point de grille le moins mauvais.
+Le modèle mental est celui d'une **grille de candidats figée, explorée par un échantillonneur
+malin**. Cela a une vraie conséquence : MIPROv2 ne peut choisir que parmi les instructions
+candidates que son proposeur a pensé à générer au départ. Si aucune n'encode l'intuition
+métier dont votre tâche avait besoin (« reconnaître la signature de la stack trace avant
+d'évaluer la sévérité »), la recherche bayésienne ne peut pas l'inventer : elle ne peut
+que retenir le moins mauvais point de la grille.
 
 ### GEPA : évolution réflexive des prompts sur un front de Pareto
 
-**GEPA** (Genetic-Pareto) — [Agrawal et al., 2025](https://arxiv.org/abs/2507.19457),
-accepté comme **ICLR 2026 Oral** — attaque directement cette limite. C'est une
-recherche évolutive où l'*opérateur de mutation est un LLM qui lit du feedback* :
+**GEPA** (Genetic-Pareto), décrit dans [Agrawal et al., 2025](https://arxiv.org/abs/2507.19457)
+et accepté comme **ICLR 2026 Oral**, s'attaque directement à cette limite. C'est une
+recherche évolutionnaire dont l'*opérateur de mutation est un LLM qui lit du feedback* :
 
 ```mermaid
 flowchart TD
@@ -335,30 +333,31 @@ flowchart TD
     M2 --> W["Return best aggregate candidate"]
 ```
 
-Quatre idées font que cela fonctionne :
+Quatre idées font que cela marche :
 
-- **La métrique renvoie du feedback, pas juste un nombre.** C'est pourquoi notre exemple
-  a `triage_metric_with_feedback` qui renvoie
-  `dspy.Prediction(score, feedback)`. La doc DSPy est franche là-dessus : donnez
-  à GEPA un simple float et vous obtenez « une version bien plus faible d'elle-même ». Le
-  texte de feedback va *verbatim* dans le prompt du LM de réflexion — « vous avez
-  dit `thread-starvation`, le bon libellé est `memory-pressure` ; un OOMKilled à
-  la limite du conteneur avec une faible utilisation du heap signifie que c'est le
-  *conteneur* qui est la contrainte » — ainsi chaque mutation est informée, pas aléatoire.
-- **Sélection Pareto au lieu du roi de la colline.** MIPROv2 garde un seul tenant ;
-  les candidats médiocres globalement mais *meilleurs sur une tranche précise* (disons,
-  les erreurs de sérialisation) sont quand même éliminés. Le front de GEPA maintient
-  chaque spécialiste de ce genre en vie et échantillonne parmi eux. Les candidats
-  spécialistes précoces survivent pour se recombiner plus tard — la même raison pour
-  laquelle les algorithmes génétiques gardent des populations diverses. L'article évalue
-  ce choix par ablation : l'échantillonnage Pareto face au glouton « toujours prendre le
-  meilleur » vaut jusqu'à ~8 % en agrégé.
+- **La métrique renvoie du feedback, pas seulement un nombre.** C'est pourquoi notre
+  exemple a un `triage_metric_with_feedback` qui renvoie `dspy.Prediction(score, feedback)`.
+  La doc DSPy est sans détour : donnez un simple float à GEPA et vous obtenez « une version
+  bien plus faible de lui-même ». Le texte du feedback est injecté *tel quel* dans le prompt
+  du LM de réflexion (« vous avez répondu `thread-starvation`, le bon libellé est
+  `memory-pressure` ; un OOMKilled à la limite du conteneur avec un heap peu utilisé
+  signifie que c'est le *conteneur* qui est la contrainte »), si bien que chaque mutation
+  est informée, pas aléatoire.
+- **Sélection de Pareto plutôt que roi de la colline.** MIPROv2 ne garde qu'un seul
+  titulaire ; les candidats médiocres dans l'ensemble mais *meilleurs sur une tranche
+  précise* (disons, les erreurs de sérialisation) sont éliminés quand même. Le front de
+  GEPA garde en vie chacun de ces spécialistes et tire parmi eux. Les spécialistes précoces
+  survivent pour se recombiner plus tard, pour la même raison que les algorithmes génétiques
+  entretiennent des populations diversifiées. L'article en fait une ablation : sur
+  Qwen3 8B, l'échantillonnage de Pareto devance d'environ 6 points de score agrégé la
+  sélection systématique du meilleur candidat courant.
 - **Fusion consciente du système** (`use_merge=True`) : quand deux lignées ont chacune
-  appris une force complémentaire, GEPA tente de fusionner leurs meilleurs modules — un
-  opérateur de croisement, en termes d'algorithmes génétiques.
-- **Le budget comme unique bouton** : exactement un parmi `auto`
-  (`light`/`medium`/`heavy`), `max_full_evals` ou `max_metric_calls`. Sur un programme à
-  deux prédicteurs sur 100 exemples, `light` ≈ 1 330 appels de métrique.
+  appris une force complémentaire, GEPA tente de fusionner leurs meilleurs modules, soit un
+  opérateur de croisement dans le vocabulaire des algorithmes génétiques.
+- **Un seul bouton de budget** : exactement un parmi `auto` (`light`/`medium`/`heavy`),
+  `max_full_evals` ou `max_metric_calls`. `light` évalue environ six prompts candidats ;
+  le nombre réel d'appels à la métrique croît avec la taille du valset et le nombre de
+  prédicteurs, donc vérifiez-le d'abord sur un petit valset.
 
 ```python
 optimizer = dspy.GEPA(
@@ -371,68 +370,68 @@ optimizer = dspy.GEPA(
 optimized = optimizer.compile(program, trainset=trainset, valset=valset)
 ```
 
-Deux notes opérationnelles issues de l'usage en production. D'abord, le **LM de réflexion
-est le bouton coûteux** — il tourne en série (une poignée d'appels par exécution,
-~12–36 sur un budget moyen), donc donnez-lui un modèle plus puissant que le modèle de la
-tâche ; les tutoriels de DSPy lui-même y utilisent des modèles de frontière. Ensuite,
-réglez `track_stats=True` : le résultat embarque `detailed_results` avec **chaque
-candidat, sa lignée parentale et les scores de validation par exemple** — une piste
-d'audit de l'évolution du prompt, que vous pouvez exporter en JSON et relire comme une
-PR.
+Deux remarques opérationnelles. D'abord, **c'est sur le LM de réflexion qu'il faut
+dépenser** : il n'est appelé que quelques fois par exécution, donc donnez-lui un modèle plus
+puissant que celui de la tâche ; la doc de DSPy recommande un modèle plus grand à cet
+endroit quand on optimise un modèle plus petit. Ensuite, activez `track_stats=True` : le
+résultat embarque `detailed_results`, avec **chaque candidat, sa lignée parentale et les
+scores de validation par exemple**. C'est une piste d'audit de l'évolution du prompt, que
+vous pouvez exporter en JSON et relire comme une PR.
 
-Ce que GEPA *modifie* est délibérément étroit : uniquement les
-`signature.instructions` de chaque prédicteur. Votre composition de modules, votre code,
-vos démos — intacts. Les instructions optimisées se transfèrent aussi remarquablement
-bien entre modèles : l'article rapporte que des prompts évolués sur Qwen3-8B ont gagné
-~9 % en étant réutilisés sur GPT-4.1 Mini.
+Ce que GEPA *modifie* est volontairement étroit : uniquement les `signature.instructions`
+de chaque prédicteur. La composition de vos modules, votre code, vos démos restent
+intacts. Les instructions optimisées se transfèrent par ailleurs remarquablement bien d'un
+modèle à l'autre : l'article rapporte que des prompts évolués sur Qwen3-8B ont gagné ~9 %
+une fois réutilisés sur GPT-4.1 Mini.
 
-## GEPA vs MIPROv2 : quel optimiseur utiliser ?
+## GEPA vs MIPROv2 : quel optimiseur choisir ?
 
-Même framework, même programme, même fonction de métrique — paradigmes de recherche
-différents. Voici la comparaison honnête :
+Même framework, même programme, même fonction de métrique, mais des paradigmes de
+recherche différents :
 
 | Dimension | MIPROv2 | GEPA |
 |---|---|---|
 | Paradigme | **Optimisation bayésienne** sur une grille de candidats figée | **Évolution réflexive** sur un ensemble de candidats ouvert |
-| Ce qu'il ajuste | Instructions **+ démos few-shot** conjointement | Instructions seulement (code aussi, via `dspy.Flex`) |
-| Contrat de métrique | Scalaire simple (float/bool) | `dspy.Prediction(score, feedback)` — feedback par prédicteur |
-| Mémoire de la recherche | Un seul tenant, meilleur jusque-là | **Front de Pareto** des gagnants par instance + fusion |
+| Ce qu'il ajuste | Instructions **+ démos few-shot** conjointement | Instructions seulement (le code aussi, via `dspy.Flex`) |
+| Contrat de métrique | Scalaire simple (float/bool) | `dspy.Prediction(score, feedback)` : feedback par prédicteur |
+| Mémoire de la recherche | Un seul titulaire, le meilleur jusque-là | **Front de Pareto** des gagnants par instance + fusion |
 | Boutons de budget | `auto` ou `num_candidates` + `num_trials` | exactement un : `auto` / `max_full_evals` / `max_metric_calls` |
 | Prompts typiques | Plus longs (les démos few-shot les gonflent) | Instructions jusqu'à **9,2x plus courtes** (mesure de l'article) |
-| Conseils sur les données | 200+ exemples font briller les longues exécutions | Une poignée suffit *si le feedback est riche* ; gardez un valset petit |
-| Résultats phares | Défaut solide ; ReAct 24 %→51 % dans l'exemple de la doc | **+10 % sur MIPROv2** sur 6 tâches ; +12 % sur AIME 2025 |
+| Données conseillées | 200+ exemples : c'est là que les longues exécutions brillent | Une poignée suffit *si le feedback est riche* ; gardez un valset petit |
+| Résultats phares | Défaut solide ; exemple ReAct de la doc : 8 % → ~42 % (MIPROv2, `medium`) | **10+ points de mieux que MIPROv2** sur 6 tâches (d'après l'abstract) |
 
-Les chiffres de coût de l'article sont plus intéressants que ceux d'exactitude. Sur
-les expériences GPT-4.1 Mini, la dépense LM totale était de **86 $ pour GEPA contre 76 $
-pour MIPROv2** — comparable — pour environ le double du gain agrégé (+13,3 % vs
-+5,6 %). Face au fine-tuning RL (GRPO), GEPA a égalisé ses meilleurs scores de validation
-après **243–1 179 rollouts contre 24 000** — jusqu'à 78x mieux en efficacité
-d'échantillonnage — tout en faisant en moyenne +6 % (jusqu'à +20 %) de mieux que GRPO.
-C'est la version évaluée par les pairs du « 10–80x moins cher que le RL » que vous
-verrez sur les réseaux sociaux.
+Les chiffres de coût de l'article sont plus parlants que ceux de précision. Dans les
+expériences avec GPT-4.1 Mini, la dépense LM totale était de **86 $ pour GEPA contre 76 $
+pour MIPROv2**, soit un coût comparable, pour environ le double de gain agrégé (+12,2
+points contre +5,6 ; GEPA+Merge : +13,3). Face au fine-tuning par RL (GRPO), GEPA a égalé
+ses meilleurs scores de validation après **243 à 1 179 rollouts contre 24 000** (jusqu'à 78x
+plus efficace en échantillons), tout en dépassant GRPO de 6 points en moyenne (jusqu'à 20).
+Ce sont les benchmarks et les configurations de l'article, pas votre charge de travail,
+mais c'est la version relue par des pairs de l'argument « moins cher que le RL » que vous
+croiserez sur les réseaux sociaux.
 
-**Ma règle de décision**, après avoir câblé les deux sur la même tâche :
+**La règle de décision que j'appliquerais**, d'après la façon dont les deux sont construits :
 
-- **Choisissez GEPA quand votre métrique peut expliquer les erreurs en mots.** Classification
-  avec raisons, extraction validée contre des schémas, agents jugés par
-  des traces au niveau des étapes — partout où « pourquoi c'était faux » est exprimable.
-  Ce feedback est le carburant ; sans lui, vous faites de l'évolution avec une fonction
+- **Choisissez GEPA quand votre métrique sait expliquer les erreurs en mots.**
+  Classification avec justifications, extraction validée par des schémas, agents jugés sur
+  des traces étape par étape : partout où « pourquoi c'était faux » peut s'exprimer. Ce
+  feedback est le carburant ; sans lui, vous faites de l'évolution avec une fonction
   d'aptitude aveugle.
 - **Choisissez MIPROv2 quand votre métrique est une boîte noire, ou quand les démos
   comptent plus que les instructions.** Si votre programme sous-apprend parce qu'il manque
-  d'exemples en contexte (pas parce que ses instructions sont fausses), la recherche
-  conjointe instruction+démo de MIPROv2 est le meilleur levier. C'est aussi le premier
-  barreau le plus doux : pas de second modèle à configurer, métriques scalaires
-  bienvenues.
-- **Sonde initiale pas chère dans tous les cas** : `BootstrapFewShotWithRandomSearch` avec
-  une métrique scalaire ne coûte presque rien et vous dit souvent si l'écart vient des
-  *démos* (elle le comble) ou des *instructions* (elle ne le comblera pas — c'est le
-  territoire de MIPROv2/GEPA).
+  d'exemples en contexte (et non parce que ses instructions sont fausses), la recherche
+  conjointe instruction + démo de MIPROv2 est le meilleur levier. C'est aussi la première
+  marche la plus douce : pas de second modèle à configurer, les métriques scalaires sont
+  les bienvenues.
+- **Dans tous les cas, une première sonde peu coûteuse** : `BootstrapFewShotWithRandomSearch`
+  avec une métrique scalaire ne coûte presque rien et vous dit souvent si l'écart vient des
+  *démos* (il le comble) ou des *instructions* (il ne le comblera pas : c'est le terrain
+  de MIPROv2/GEPA).
 
-Et elles ne s'excluent pas mutuellement. DSPy 3.x livre `BetterTogether`, qui
-enchaîne optimisation de prompts et optimisation de poids (par ex. GEPA puis GRPO) sur
-le même programme — évolution de prompts pour trouver la stratégie, RL pour la compresser
-dans les poids quand vous pouvez vous permettre les rollouts.
+Et les deux ne s'excluent pas. DSPy 3.x fournit `BetterTogether`, qui enchaîne optimisation
+de prompts et optimisation des poids (par exemple GEPA, puis fine-tuning) sur le même
+programme : l'évolution de prompts pour trouver la stratégie, le RL pour la compresser dans
+les poids quand vous avez le budget de rollouts.
 
 ## Exécuter l'exemple
 
@@ -455,56 +454,58 @@ uv run python 03_optimize_gepa.py    # reflective evolution → optimized/gepa_t
 ```
 
 Par défaut : modèle de tâche `openai/gpt-4o-mini`, modèle de réflexion GEPA
-`openai/gpt-4o` (surchargé avec `DSPY_MODEL` / `DSPY_REFLECTION_MODEL`). Sur 24
-exemples, les deux exécutions d'optimisation restent dans la gamme du centime.
+`openai/gpt-4o` (à surcharger avec `DSPY_MODEL` / `DSPY_REFLECTION_MODEL`). Le jeu de
+données compte 24 exemples, donc une exécution reste modeste ; consultez la page
+d'utilisation de votre fournisseur pour le coût réel. Je n'affiche volontairement aucun
+chiffre de précision ici : 10 exemples de validation, c'est une démo de câblage, pas un
+benchmark. Lancez les trois scripts et comparez les scores sur votre propre modèle avant
+de croire un optimiseur.
 
-Le moment qui vaut la peine d'être vécu soi-même : après chaque exécution, faites un diff
-du JSON sauvegardé contre le programme source. `02_optimize_miprov2.py` aura écrit des
-instructions et injecté des démos few-shot. `03_optimize_gepa.py` aura réécrit
-l'instruction — et `optimized/gepa_results.json` contient la lignée évolutive
-complète : chaque candidat, ses parents, les scores par exemple. Ce fichier est
-toute la thèse de DSPy en un seul artefact : **le prompt est un résultat, pas du
-source.**
+Le moment qui vaut le coup d'être vécu : après chaque exécution, faites un diff du JSON
+sauvegardé avec le programme source. `02_optimize_miprov2.py` aura écrit des instructions
+et injecté des démos few-shot. `03_optimize_gepa.py` aura réécrit l'instruction, et
+`optimized/gepa_results.json` contient toute la lignée évolutive : chaque candidat, ses
+parents, les scores par exemple. Ouvrez-le à côté du code source de votre programme et
+l'idée s'impose d'elle-même : **le prompt est un résultat, pas du code source.**
 
 ## Quand ne pas utiliser DSPy ?
 
-Section honnêteté, parce que chaque discours de framework en a besoin d'une.
+Section franchise, parce que tout discours sur un framework en a besoin d'une.
 
-- **Pas de métrique, pas de DSPy.** Si vous ne pouvez pas noter les sorties — même
-  bruitées — l'optimiseur n'a rien à gravir. Construire le jeu d'éval et la métrique est
-  le vrai travail ; DSPy automatise juste la recherche dessus. (Les équipes qui sautent
-  cette étape et ajustent les prompts à la main font la recherche *au doigt mouillé*,
+- **Pas de métrique, pas de DSPy.** Si vous ne pouvez pas évaluer les sorties, même de
+  façon bruitée, l'optimiseur n'a rien à gravir. Construire le jeu d'évaluation et la
+  métrique est le vrai travail ; DSPy ne fait qu'automatiser la recherche. (Les équipes qui
+  sautent cette étape et ajustent les prompts à la main font la recherche *au feeling*,
   avec de moins bonnes données.)
-- **Un prompt stable sur un problème résolu ?** N'ajoutez pas la taxe d'abstraction.
-  DSPy rapporte quand les programmes sont multi-étapes, que les modèles changent souvent,
-  ou que les écarts de qualité coûtent de l'argent réel.
-- **Budget RL illimité et poids entraînables ?** L'article GEPA est explicite :
-  l'évolution de prompts gagne quand les rollouts sont coûteux, que les données sont
-  limitées, ou que les poids sont gelés côté API. Le fine-tuning à la GRPO gagne toujours
-  dans le régime à rollouts abondants. Des outils différents, une économie différente.
-- **C'est vous qui possédez le prompt.** L'artefact compilé est ajusté à *votre
-  métrique* — optimisez contre une métrique proxy qui ne correspond pas à la production,
-  et vous livrerez un programme magnifiquement optimisé pour le mauvais objectif. Même
-  règle que toujours : votre suite d'évals *est* votre spécification.
+- **Un seul prompt stable sur un problème résolu ?** N'ajoutez pas cette couche
+  d'abstraction. DSPy devient rentable quand les programmes comportent plusieurs étapes,
+  que les modèles changent souvent, ou que les écarts de qualité coûtent de l'argent.
+- **Budget RL illimité et poids entraînables ?** L'article GEPA est explicite : l'évolution
+  de prompts l'emporte quand les rollouts sont coûteux, les données limitées ou les poids
+  figés derrière une API. Le fine-tuning de type GRPO reste gagnant quand les rollouts sont
+  abondants. Des outils différents, une économie différente.
+- **Le prompt reste votre responsabilité.** L'artefact compilé est ajusté à *votre
+  métrique* : optimisez contre une métrique proxy qui ne reflète pas la production, et vous
+  livrerez un programme superbement optimisé pour le mauvais objectif. Même règle qu'à
+  l'accoutumée : votre suite d'évaluation *est* votre spécification.
 
 ---
 
-Le pattern à retenir est celui que ce blog retrouve sans cesse dans d'autres domaines : déplacer le
-jugement d'exécution vers des artefacts déclarés, mesurables et versionnés.
-Nous l'avons fait pour l'infrastructure, puis pour les migrations de schéma ; DSPy le fait pour
-le dernier artefact édité à la main de la pile, la chaîne de prompt. Les optimiseurs sont
-la partie intéressante — mais c'est la *discipline* qui paie. Le prompt cesse
-d'être la chose que quelqu'un bidouille à 2 h du matin et devient la chose que la CI
-régénère quand le modèle, les données ou la métrique changent.
+Toutes les couches d'une stack backend ont déjà eu droit à ce traitement : la config est
+devenue du code, le schéma des migrations, l'infrastructure du déclaratif. La chaîne de
+prompt est le dernier artefact que l'on édite encore à la main à 2 h du matin. La réponse
+de DSPy est celle qui a fonctionné pour le reste : la déclarer, la mesurer, la versionner.
+Les optimiseurs sont la partie intéressante, mais c'est la discipline qui paie : le prompt
+devient ce que la CI régénère quand le modèle, les données ou la métrique changent.
 
-Si vous voulez une seconde passe, plus profonde, sur les optimiseurs, les sources
-primaires sont excellentes : l'[article GEPA](https://arxiv.org/abs/2507.19457) (ICLR 2026
-Oral), l'[article MIPROv2](https://arxiv.org/abs/2406.11695), et le
-[guide officiel d'optimisation DSPy](https://dspy.ai/learn/optimization/overview/),
-qui inclut un [choisisseur d'optimiseur pas à pas](https://dspy.ai/diving-deeper/choosing-an-optimizer/).
+Si vous voulez approfondir les optimiseurs, les sources primaires sont excellentes :
+l'[article GEPA](https://arxiv.org/abs/2507.19457) (ICLR 2026 Oral), l'[article
+MIPROv2](https://arxiv.org/abs/2406.11695) et le [guide officiel d'optimisation de
+DSPy](https://dspy.ai/learn/optimization/overview/), qui inclut un [sélecteur d'optimiseur
+pas à pas](https://dspy.ai/diving-deeper/choosing-an-optimizer/).
 
 *Le code de cet article est disponible sur
 **[github.com/javaAndScriptDeveloper/dspy-article](https://github.com/javaAndScriptDeveloper/dspy-article)**.
-Toute la chaîne se vérifie hors ligne — `uv sync && uv run python smoke_test.py`
-exécute une boucle d'optimisation GEPA complète sans clé d'API — et les exécutions réelles
-coûtent des centimes sur le jeu de données de 24 exemples fourni.*
+Toute la chaîne se vérifie hors ligne : `uv sync && uv run python smoke_test.py`
+exécute une boucle d'optimisation GEPA complète sans clé d'API, et les exécutions réelles
+utilisent un petit jeu de données de 24 exemples.*

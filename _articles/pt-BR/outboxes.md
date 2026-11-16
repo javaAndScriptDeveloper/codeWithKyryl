@@ -16,7 +16,7 @@ faq:
   - question: "Preciso de Kafka ou de um message broker para usar o padrão outbox?"
     answer: "Não. O padrão outbox funciona apenas com um banco relacional. Um worker agendado pode fazer polling da tabela de outbox diretamente com `SELECT ... FOR UPDATE SKIP LOCKED`. Um broker como o Kafka é opcional — você pode publicar a partir do outbox, mas o PostgreSQL sozinho basta para execução assíncrona confiável."
   - question: "Como vários workers evitam processar a mesma linha do outbox?"
-    answer: "Use `SELECT ... FOR UPDATE SKIP LOCKED` ao reivindicar linhas. Cada worker trava as linhas que escolhe e o `SKIP LOCKED` faz os outros workers ignorarem as linhas já travadas em vez de esperar, então várias instâncias podem fazer polling da mesma tabela concorrentemente sem processamento duplicado."
+    answer: "Use `SELECT ... FOR UPDATE SKIP LOCKED` ao pegar linhas para processar. Cada worker trava as linhas que escolhe e o `SKIP LOCKED` faz os outros workers ignorarem as linhas já travadas em vez de esperar, então várias instâncias podem fazer polling da mesma tabela concorrentemente sem processamento duplicado."
   - question: "Como tratar tarefas que falharam e retries em um outbox?"
     answer: "Dê a cada tarefa uma máquina de estados (PENDING → PROCESSING → COMPLETED/FAILED), um contador de retries e um timestamp `next_attempt_at` para backoff exponencial. Um timestamp de heartbeat/lease permite retomar tarefas órfãs de um worker que caiu, e um limite máximo de retries move mensagens venenosas para um estado de dead-letter para inspeção manual."
 ---
@@ -226,7 +226,7 @@ public interface ReportGenerationRepository extends JpaRepository<ReportGenerati
 ```
 
 Isso funciona em uma aplicação de instância única e sem falhas. No mundo real, tem dois problemas:
-dois workers podem reivindicar a mesma tarefa simultaneamente, e tarefas podem falhar sem nenhum
+dois workers podem pegar a mesma tarefa simultaneamente, e tarefas podem falhar sem nenhum
 caminho de recuperação. Vamos corrigir os dois.
 
 ---
@@ -319,7 +319,7 @@ da duração da execução do outbox: a ação pode ficar mais lenta com o tempo
 um serviço downstream, deixando uma conexão de banco e um lock de linha retidos por um período
 imprevisível.
 
-Em vez disso, reivindique a linha em uma transação curta movendo-a para `PROCESSING`, faça commit e
+Em vez disso, capture a linha em uma transação curta movendo-a para `PROCESSING`, faça commit e
 libere o lock, e só então execute a ação do outbox. Registre `COMPLETED` ou `FAILED` depois, em outra
 transação curta. A próxima seção implementa essa transição de estado e o caminho de recuperação dela.
 
@@ -476,7 +476,7 @@ pressionam o pool de conexões e deixam o banco infeliz sob carga. Uma ação mu
 tecnicamente concluir sem causar problema visível, mas acoplar a duração da transação à duração da
 execução do outbox continua sendo um antipadrão.
 
-A correção é separar a reivindicação da tarefa da sua execução. Mude a tarefa para `PROCESSING` em
+A correção é separar a captura da tarefa da sua execução. Mude a tarefa para `PROCESSING` em
 uma transação curta, libere o lock e só então faça o trabalho real fora de qualquer transação. Assim
 o banco é tocado brevemente no início e brevemente no fim — a parte cara acontece no meio, sem
 segurar nada.
@@ -1039,7 +1039,7 @@ Execution Time: 0.139 ms
 ```
 
 0,03ms para achar a tarefa elegível mais antiga. As 49.993 linhas `COMPLETED` nunca foram lidas.
-Aprovado.
+Passou no teste.
 
 Mais dois índices para as outras duas operações em background:
 
@@ -1066,7 +1066,7 @@ CREATE INDEX idx_outbox_cleanup
 O seu outbox é uma tabela operacional. Toda query de busca a varre. Linhas velhas são peso morto.
 
 A regra: só apague tarefas **`COMPLETED`**. Tarefas `FAILED` são o seu registro de auditoria. Não
-as mexa. Trate-as manualmente ou por um processo de ops separado quando necessário.
+mexa nelas. Trate-as manualmente ou por um processo de ops separado quando necessário.
 
 ```java
 @Modifying
@@ -1115,7 +1115,7 @@ relatório), está tudo certo. Se ela tem efeitos colaterais (envia um e-mail, c
 duplicata é um problema.
 
 A correção: use o próprio `id` da tarefa de outbox como chave de idempotência dentro do handler.
-O ID da tarefa é estável entre os retries — nunca muda para a mesma linha. O handler checa se o
+O ID da tarefa é estável entre os retries: nunca muda para a mesma linha. O handler checa se o
 trabalho para esse ID já foi registrado. Se sim, é um no-op.
 
 No nosso caso, a geração de relatório termina inserindo uma linha em `generated_reports` — esse é o
@@ -1175,7 +1175,7 @@ Três sinais cobrem completamente o espaço de falhas, segundo o modelo de SRE d
 
 - **Latência** — quanto tempo cada tarefa leva da captura à conclusão? Pico aqui significa que o handler está lento ou o banco está sob pressão.
 - **Throughput** — quantas tarefas por unidade de tempo estão concluindo? Queda a zero significa que o scheduler não está rodando ou que nenhuma tarefa está sendo capturada.
-- **Taxa de erro** — que fração das tentativas termina em falha? Acima de ~5% significa que uma dependência downstream está degradada e a fila de retries crescendo.
+- **Taxa de erro** — que fração das tentativas termina em falha? Acima de ~5% significa que uma dependência downstream está degradada e a fila de retries está crescendo.
 
 <img src="{{ site.baseurl }}/assets/img/outbox-grafana-dashboard.png" alt="Dashboard Grafana do outbox" style="max-width: 100%; height: auto; border-radius: 8px; border: 1px solid #e5e7eb;">
 
@@ -1249,7 +1249,7 @@ outbox_tasks_pending 0.0
 
 Dashboards são para humanos olhando telas. Alertas são para humanos que estão dormindo.
 
-| Alerta | Dispara quando | Por | Significado |
+| Alerta | Dispara quando | Durante | Significado |
 |---|---|---|---|
 | `OutboxQueueBacklog` | pendentes > 50 | 5m | O processamento não acompanha a ingestão |
 | `OutboxHighErrorRate` | taxa de erro > 5% | 2m | Handler ou downstream degradado |
@@ -1297,7 +1297,7 @@ tabela de banco, pessimistic locking com `SKIP LOCKED`, heartbeats para detectar
 e uma interface limpa de tarefa/handler. Quando projeto outboxes próprios, uso o db-scheduler como
 implementação de referência — as interfaces, os padrões e o tratamento de falhas são todos
 sólidos. Se você está começando um projeto novo e quer uma fundação testada em batalha em vez de
-rolar a sua própria, comece por aqui. As abstrações são finas o suficiente para você reconhecer
+construir a sua própria, comece por aqui. As abstrações são finas o suficiente para você reconhecer
 tudo deste artigo no código-fonte.
 
 ---

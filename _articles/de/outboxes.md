@@ -44,7 +44,7 @@ Genau darum geht es in diesem Artikel.
 Ich gehe ein einziges konkretes Szenario durch — einen **Report-Generation-Service** — und
 entwickle es Schritt für Schritt von der rudimentärsten Outbox zu etwas, dem ich mich in
 Produktion anvertrauen würde. Jeder Code-Schnipsel stammt aus einem echten, lauffähigen Repo,
-die am Ende verlinkt ist.
+das am Ende verlinkt ist.
 
 Stack: **Java, Spring Boot, PostgreSQL**.
 
@@ -52,7 +52,7 @@ Stack: **Java, Spring Boot, PostgreSQL**.
 <p class="post-tldr-title">TL;DR</p>
 
 - Das **Transactional Outbox Pattern** löst das Dual-Write-Problem, indem es eine Task-Zeile in die **dieselbe DB-Transaktion** wie deine Domain-Änderung schreibt und sie anschließend von einem Background Worker ausführen lässt.
-- Poll die Outbox-Tabelle mit `SELECT ... FOR UPDATE SKIP LOCKED`, damit mehrere Worker parallel laufen können, ohne doppelt zu verarbeiten.
+- Polle die Outbox-Tabelle mit `SELECT ... FOR UPDATE SKIP LOCKED`, damit mehrere Worker parallel laufen können, ohne doppelt zu verarbeiten.
 - Produktionsreife braucht mehr als die Grundidee: eine **State Machine**, **Retries mit Backoff**, **Heartbeats/Leases**, um gecrashte Worker zu erkennen, **Ordering-Garantien** und **Monitoring** der Queue Depth.
 - Du brauchst kein Kafka — **PostgreSQL allein** reicht für zuverlässige Async-Ausführung.
 </div>
@@ -268,7 +268,7 @@ Annotation auszulagern, damit die magische Zahl nicht über alle deine Repositor
 public @interface SkipLocked {}
 ```
 
-Deutlich sauberer. Jetzt liest sich das Repository wie Absicht, nicht wie Klempnerarbeit:
+Deutlich sauberer. Jetzt zeigt das Repository seine Absicht, statt wie Klempnerarbeit auszusehen:
 
 ```java
 @SkipLocked
@@ -427,7 +427,7 @@ Der häufigste Fehler hier ist, `@EventListener` statt
 `@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)` zu verwenden.
 
 `@EventListener` feuert in dem Moment, in dem `publishEvent()` aufgerufen wird — also **innerhalb
-der offenen Transaktion**, bevor das `INSERT` gecommt ist. Der Listener ruft `fetchAndProcess()`
+der offenen Transaktion**, bevor das `INSERT` committet ist. Der Listener ruft `fetchAndProcess()`
 auf, das die Datenbank per ID nach der Task abfragt. Die Zeile existiert noch nicht. Die Task wird
 stillschweigend übersprungen, das Event ist verloren, und du fragst dich, warum die Verarbeitung
 nie startet — obwohl der Scheduler sie Sekunden später doch noch aufgreift und in den Logs alles
@@ -448,7 +448,7 @@ public void onTaskSubmitted(ReportGenerationTaskSubmittedEvent event) {
 ```
 
 `AFTER_COMMIT` garantiert, dass der Listener erst läuft, nachdem die Transaktion, die das Event
-publiziert hat, vollständig gecommt ist. Zu diesem Zeitpunkt ist die Zeile für alle Verbindungen
+publiziert hat, vollständig committet ist. Zu diesem Zeitpunkt ist die Zeile für alle Verbindungen
 sichtbar, und der Fetch wird sie finden.
 
 Der Scheduler bleibt unverändert — er dient als Recovery-Mechanismus für alle Tasks, die der
@@ -569,10 +569,10 @@ public class ReportGenerationTaskService {
 ```
 
 Die Query holt sowohl `PENDING`- als auch `FAILED`-Tasks — eine fehlgeschlagene Task mit
-`retryCount < 10` ist genauso kandidierend wie eine frische. Sobald der Retry Count das Limit
+`retryCount < 10` ist genauso ein Kandidat für die Ausführung wie eine frische. Sobald der Retry Count das Limit
 erreicht, wird die Task nicht mehr geholt und liegt als dauerhafter `FAILED`-Datensatz, bis sich
-jemand sie ansieht. Das ist Absicht — jenseits von 10 Versuchen ist etwas wirklich kaputt und
-braucht Augen darauf, nicht einen weiteren Retry.
+jemand sie ansieht. Das ist Absicht: Nach 10 Versuchen ist etwas wirklich kaputt, und dann
+braucht es einen Blick von jemandem, keinen weiteren Retry.
 
 ```java
 @SkipLocked
@@ -590,7 +590,7 @@ Optional<ReportGenerationEntity> findFirstEligibleTask(
 );
 ```
 
-Aber Moment — soll eine gerade fehlgeschlagene Task wirklich schon im aller nächsten
+Aber Moment — soll eine gerade fehlgeschlagene Task wirklich schon im allernächsten
 Scheduler-Tick, also Sekunden später, wieder aufgenommen werden? Ist das Downstream-System down,
 machst du es schlimmer, wenn du es jede Sekunde bombardierst. Darum geht es im nächsten Abschnitt.
 
@@ -601,7 +601,7 @@ Scheduler-Tick wieder in der Queue — meist Sekunden später. Ist das Downstrea
 bombardierst du es mit voller Polling-Rate. Das ist schlecht für das Downstream-System und
 schlecht für deine DB.
 
-Die Lösung ist eine `execute_at`-Spalte: Die Task ist nicht kandidierend, solange dieser Timestamp
+Die Lösung ist eine `execute_at`-Spalte: Die Task wird nicht abgeholt, solange dieser Timestamp
 nicht in der Vergangenheit liegt. Frische Tasks bekommen `execute_at = now()`, damit sie sofort
 aufgenommen werden. Fehlgeschlagene Tasks bekommen `execute_at = now() + delay`, wobei das Delay
 mit jedem Retry wächst.
@@ -844,7 +844,7 @@ hinzuzufügen.
 
 Die Trade-offs, die man vorab kennen sollte:
 
-- Ein sich schlecht benimmender neuer Task-Typ kann alle anderen Typen verlangsamen — ein
+- Ein neuer Task-Typ mit Fehlverhalten kann alle anderen Typen verlangsamen — ein
   schlechter Handler, der Retries verbrennt, erzeugt Backpressure über die ganze Tabelle.
 - Ordering-Garantien werden schwieriger — dazu später mehr.
 
@@ -907,7 +907,7 @@ public class EmailNotificationHandler implements OutboxTaskHandler<EmailNotifica
 
 ### Der Dispatcher
 
-Der Service sammelt beim Start alle Handler-Beans ein, baut eine Lookup-Map und route't jede Task
+Der Service sammelt beim Start alle Handler-Beans ein, baut eine Lookup-Map und routet jede Task
 anhand von `taskType`:
 
 ```java
@@ -1025,7 +1025,7 @@ Wenn striktes FIFO in deinem System zählt — vergiss das nicht.
 Deine Outbox-Tabelle wird jede Sekunde gepollt, oft mehrfach pro Sekunde. Jede Zeile darin ist
 entweder aktive Arbeit (`PENDING`, `FAILED`, `PROCESSING`) oder historischer Ballast
 (`COMPLETED`). Ohne die richtigen Indizes scannt jeder Poll die gesamte Tabelle, um die Handvoll
-kandidierender Zeilen zu finden.
+relevanter Zeilen zu finden.
 
 Das richtige Werkzeug ist ein **partieller Index** — einer, der nur Zeilen enthält, die ein
 Prädikat erfüllen. Geht eine Task auf `COMPLETED` über, fällt sie automatisch aus dem partiellen
@@ -1055,7 +1055,7 @@ Planning Time: 1.230 ms
 Execution Time: 0.139 ms
 ```
 
-0,03 ms, um die älteste kandidierende Task zu finden. Die 49.993 `COMPLETED`-Zeilen wurden nie
+0,03 ms, um die älteste ausführbare Task zu finden. Die 49.993 `COMPLETED`-Zeilen wurden nie
 gelesen. Sieht für mich gut aus.
 
 Zwei weitere Indizes für die anderen beiden Background-Operationen:
@@ -1328,13 +1328,13 @@ dünn genug, dass du alles aus diesem Artikel im Quellcode wiedererkennst.
 **[Celery](https://docs.celeryq.dev/)** — der De-facto-Standard für Async-Task-Ausführung im
 Python-Ökosystem. Celery unterstützt PostgreSQL als Result Backend und Redis oder RabbitMQ als
 Broker. Das `AFTER_COMMIT`-Pattern aus Teil 2.5 gilt auch hier — pushe zu Celery erst, nachdem
-die Transaktion gecommt hat, nicht innerhalb dieser.
+die Transaktion committet hat, nicht innerhalb dieser.
 
 ---
 
 **[Quartz Scheduler](https://www.quartz-scheduler.org/)** — die seit Langem etablierte
 Java-Scheduling-Bibliothek mit JDBC-basierter Job-Persistenz. Allgemeiner als eine Outbox, mit
-Cron-Ausdrücken, Triggern und Job Stores. Der operationale Overhead ist höher als bei
+Cron-Ausdrücken, Triggern und Job Stores. Der Betriebsaufwand ist höher als bei
 db-scheduler, und die API ist an modernen Maßstäben gemessen wortreich — aber sie ist bei
 Skalierung bewährt und bietet erstklassige Spring-Integration via `spring-boot-starter-quartz`.
 
@@ -1342,7 +1342,7 @@ Skalierung bewährt und bietet erstklassige Spring-Integration via `spring-boot-
 
 ## Abschließende Gedanken
 
-Das meiste in diesem Artikel ist kein cleveres Engineering — es ist angelaufenes Narbengewebe.
+Das meiste in diesem Artikel ist kein cleveres Engineering — es ist angesammeltes Narbengewebe.
 Der `PROCESSING`-State existiert, weil irgendwann eine App gecrasht ist. Der Heartbeat existiert,
 weil `updated_at` gelogen hat. Der partielle Index existiert, weil ein Full Table Scan in
 Polling-Frequenz still und leise wächst, bis er es nicht mehr tut. Der `AFTER_COMMIT`-Listener

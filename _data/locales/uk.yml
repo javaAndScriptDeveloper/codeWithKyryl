@@ -10,11 +10,11 @@ nav:
   contact: "Контакти"
 
 footer:
-  tagline: "Відмовостійкі бекенди на Java. AI-інструменти — за тими самими мірками."
+  tagline: "Відмовостійкі Java-бекенди. До AI-інструментів — ті самі вимоги."
 
 home:
   hero_subtitle: "Пишу про те, що насправді ламається в продакшені."
-  latest_title: "Свіжі надходження"
+  latest_title: "Свіжі публікації"
   article_badge: "Стаття"
   continue_reading: "Читати далі"
   view_all_articles: "Переглянути всі статті"
@@ -22,20 +22,20 @@ home:
   practice_note: "Інтерактивна практика — тести та лабораторія продакшен-інцидентів — наразі доступна англійською."
   practice_note_cta: "Перейти до практики англійською"
   about_title: "Про мене"
-  about_p1: "Я <span class=\"about-highlight\">Kyryl</span>, моя робота — <span class=\"about-highlight\">Java-бекенди</span>: сервіси на Spring Boot, що тримають навантаження і не будуть мене о 3-й ночі."
-  about_p2: "Німало часу останнім часом іде на <span class=\"about-highlight\">AI-інструменти</span>: <span class=\"about-highlight\">Claude</span> у щоденній роботі, <span class=\"about-highlight\">DSPy</span> для LLM-функцій, Python там, де Java — не той інструмент. Пишу про те, що це насправді змінює."
-  about_p3: "Обидві теми тут на одному рівні: справжній код із робочих репозиторіїв, що спрацювало, що ні і що я зробив би інакше."
+  about_p1: "Я <span class=\"about-highlight\">Kyryl</span>, професійно будую <span class=\"about-highlight\">Java-бекенди</span>: сервіси на Spring Boot, які витримують навантаження і не будять мене о третій ночі."
+  about_p2: "Останнім часом чимало часу йде на <span class=\"about-highlight\">AI-інструменти</span>: <span class=\"about-highlight\">Claude</span> у щоденній роботі, <span class=\"about-highlight\">DSPy</span> для LLM-функціональності, Python там, де Java — не той інструмент. Пишу про те, що це справді змінює."
+  about_p3: "До обох тем тут однаковий підхід: справжній код із репозиторіїв, які можна запустити, що спрацювало, що ні і що б я зробив інакше."
   contact_title: "Зв’яжімося"
-  contact_subtitle: "Маєте запитання, ідею для теми чи просто хочете поговорити про бекенд? Я на відстані одного повідомлення."
+  contact_subtitle: "Маєте запитання, ідею для теми чи просто хочете поговорити про бекенд? Пишіть — я на зв’язку."
 
 tutorials:
   h1: "Архів туторіалів"
-  subtitle: "Переглядайте всі публікації за темами"
+  subtitle: "Усі публікації — за темами"
   article_badge: "Стаття"
   continue_reading: "Читати далі"
-  no_results_title: "Надходжень не знайдено"
-  no_results_text: "За обраними тегами публікацій немає. Спробуйте змінити фільтр."
-  showing_js: "Показано :start-:end з :total надходжень"
+  no_results_title: "Публікацій не знайдено"
+  no_results_text: "За вибраними тегами публікацій немає. Спробуйте змінити фільтр."
+  showing_js: "Показано :start–:end із :total публікацій"
 
 post:
   article_badge: "Стаття"

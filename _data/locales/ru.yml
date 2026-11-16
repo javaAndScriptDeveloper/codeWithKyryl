@@ -30,14 +30,14 @@ home:
 
 tutorials:
   h1: "Архив туториалов"
-  subtitle: "Все статьи, сгруппированные по темам"
+  subtitle: "Все материалы по темам"
   article_badge: "Статья"
   continue_reading: "Читать далее"
   no_results_title: "Ничего не найдено"
-  no_results_text: "Под выбранные теги не подходит ни один пост. Стоит скорректировать фильтр."
+  no_results_text: "Нет постов с выбранными тегами. Попробуйте изменить фильтр."
   showing_js: "Показаны :start-:end из :total публикаций"
 
 post:
   article_badge: "Статья"
   min_read: "мин чтения"
-  faq_heading: "Часто задаваемые вопросы"
+  faq_heading: "Частые вопросы"

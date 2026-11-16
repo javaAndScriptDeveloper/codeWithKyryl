@@ -40,7 +40,7 @@ profondeur de la file a grimpé en flèche à 3 h du matin mardi dernier.
 
 C'est ce que couvre cet article.
 
-Je vais dérouler un scénario concret unique — un **service de génération de rapports** — et l'évolutionner
+Je vais dérouler un scénario concret unique — un **service de génération de rapports** — et la faire évoluer
 pas à pas, de l'outbox la plus simple possible à quelque chose que je serais prêt à faire tourner en
 production. Chaque extrait de code provient d'un dépôt réel et fonctionnel, lié à la fin de l'article.
 
@@ -470,7 +470,7 @@ verrouillée maintient un verrou en base pendant toute la
 durée de `generateReport()`. Pour un rapport qui prend deux minutes, ce sont deux minutes de
 ligne verrouillée — une connexion mobilisée, d'autres opérations en base potentiellement en file d'attente
 derrière. Avec `SKIP LOCKED`, les workers ne se bloquent pas mutuellement sur le verrou, mais les transactions
-longues exercent quand même une pression sur le pool de connexions et mettent la base de mauvaise humeur sous
+longues exercent quand même une pression sur le pool de connexions et mettent la base en difficulté sous
 charge. Une action très courte peut techniquement se terminer sans causer de trouble visible, mais coupler la
 durée de la transaction à la durée d'exécution de l'outbox reste un antipattern.
 
@@ -559,7 +559,7 @@ public class ReportGenerationTaskService {
 
 La requête récupère à la fois les tâches `PENDING` et `FAILED` — une tâche échouée avec `retryCount < 10` est
 tout aussi éligible qu'une tâche neuve. Une fois le compteur de retries au plafond, la tâche n'est plus récupérée
-et reste en enregistrement `FAILED` permanent jusqu'à ce que quelqu'un la regarde. C'est volontaire — au-delà de
+et reste comme enregistrement `FAILED` permanent jusqu'à ce que quelqu'un la regarde. C'est volontaire — au-delà de
 10 tentatives, quelque chose est réellement cassé et a besoin qu'on y pose les yeux, pas d'un retry de plus.
 
 ```java
@@ -948,7 +948,7 @@ toujours par `created_at ASC` dans votre requête de récupération :
 Optional<OutboxTaskEntity> findFirstEligibleTask(...);
 ```
 
-Appuyez cela sur un index partiel :
+Appuyez-vous sur un index partiel :
 
 ```sql
 CREATE INDEX idx_outbox_fetch
@@ -1291,7 +1291,7 @@ internes ressemblent le plus à ce que nous avons construit dans cet article. Il
 du verrouillage pessimiste avec `SKIP LOCKED`, des heartbeats pour détecter les tâches bloquées, et une interface
 tâche/handler propre. Quand je conçois des outboxes maison, j'utilise db-scheduler comme implémentation de
 référence — les interfaces, les patterns, la gestion des pannes sont tous sains. Si vous démarrez un nouveau
-projet et voulez une fondation éprouvée plutôt que de rouler la vôtre, commencez ici. Les abstractions sont assez
+projet et voulez une fondation éprouvée plutôt que d'écrire la vôtre, commencez ici. Les abstractions sont assez
 fines pour que vous reconnaissiez tout ce que cet article décrit dans le code source.
 
 ---
@@ -1313,8 +1313,8 @@ elle a fait ses preuves à grande échelle avec une intégration Spring de premi
 
 ## Pour conclure
 
-La plupart de ce qui figure dans cet article n'est pas de l'ingénierie brillante — c'est du tissu cicatriciel
-accumulé. L'état `PROCESSING` existe parce que l'application de quelqu'un a planté. Le heartbeat existe parce que
+La plupart de ce qui figure dans cet article n'est pas de l'ingénierie brillante — c'est le fruit de cicatrices
+accumulées. L'état `PROCESSING` existe parce que l'application de quelqu'un a planté. Le heartbeat existe parce que
 `updated_at` a menti. L'index partiel existe parce qu'un full table scan à la fréquence du polling s'accumule
 discrètement jusqu'à ne plus passer. Le listener `AFTER_COMMIT` existe parce que quelqu'un a publié un événement
 à l'intérieur d'une transaction et a passé des heures à déboguer pourquoi il ne se déclenchait jamais.

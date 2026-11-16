@@ -11,32 +11,32 @@ nav:
   contact: "Kontakt"
 
 footer:
-  tagline: "Robuste Java-Backends. KI-Werkzeuge am selben Maßstab gemessen."
+  tagline: "Robuste Java-Backends. KI-Tooling mit demselben Anspruch."
 
 home:
-  hero_subtitle: "Ich schreibe darüber, was in Produktion tatsächlich bricht."
+  hero_subtitle: "Ich schreibe darüber, was in Produktion wirklich kaputtgeht."
   latest_title: "Neueste Artikel"
   article_badge: "Artikel"
   continue_reading: "Weiterlesen"
   view_all_articles: "Alle Artikel ansehen"
   explore_practice: "Practice entdecken"
-  practice_note: "Interactive Practice — Quizze und das Production-Incident-Lab — ist derzeit nur auf Englisch verfügbar."
+  practice_note: "Der interaktive Practice-Bereich mit Quizzen und dem Production-Incident-Lab ist derzeit nur auf Englisch verfügbar."
   practice_note_cta: "Practice auf Englisch entdecken"
   about_title: "Über mich"
-  about_p1: "Ich bin <span class=\"about-highlight\">Kyryl</span>. Ich baue <span class=\"about-highlight\">Java-Backends</span>: Spring-Boot-Services, die Last aushalten und mich nicht um 3 Uhr nachts wecken."
-  about_p2: "In letzter Zeit steckt viel Zeit in <span class=\"about-highlight\">KI-Werkzeugen</span>: <span class=\"about-highlight\">Claude</span> im Arbeitsalltag, <span class=\"about-highlight\">DSPy</span> für LLM-Features, Python, wenn Java das falsche Werkzeug ist. Ich schreibe darüber, was das wirklich ändert."
-  about_p3: "Beide Themen werden hier gleich behandelt: echter Code aus lauffähigen Repos, was funktioniert hat, was nicht, und was ich anders machen würde."
-  contact_title: "Lass uns vernetzen"
-  contact_subtitle: "Du hast eine Frage, eine Themenidee oder willst einfach über Backends reden? Eine Nachricht genügt."
+  about_p1: "Ich bin <span class=\"about-highlight\">Kyryl</span>. Ich baue beruflich <span class=\"about-highlight\">Java-Backends</span>: Spring-Boot-Services, die unter Last durchhalten und mich nicht um 3 Uhr nachts wecken."
+  about_p2: "In letzter Zeit beschäftige ich mich viel mit <span class=\"about-highlight\">KI-Tooling</span>: <span class=\"about-highlight\">Claude</span> im Arbeitsalltag, <span class=\"about-highlight\">DSPy</span> für LLM-Features, Python, wo Java das falsche Werkzeug ist. Ich schreibe darüber, was sich dadurch tatsächlich ändert."
+  about_p3: "Beide Themen behandle ich hier gleich: echter Code aus lauffähigen Repos, was funktioniert hat, was nicht und was ich heute anders machen würde."
+  contact_title: "Lass uns in Kontakt bleiben"
+  contact_subtitle: "Du hast eine Frage, eine Themenidee oder willst einfach über Backends fachsimpeln? Eine Nachricht genügt."
 
 tutorials:
   h1: "Tutorial-Archiv"
-  subtitle: "Alle Beiträge nach Thema stöbern"
+  subtitle: "Alle Beiträge nach Thema durchstöbern"
   article_badge: "Artikel"
   continue_reading: "Weiterlesen"
   no_results_title: "Keine Artikel gefunden"
-  no_results_text: "Keine Beiträge passen zu den ausgewählten Tags. Passe deinen Filter an."
-  showing_js: "Zeige :start-:end von :total Beiträgen"
+  no_results_text: "Keine Beiträge passen zu den ausgewählten Tags. Passe den Filter an."
+  showing_js: "Zeige :start–:end von :total Beiträgen"
 
 post:
   article_badge: "Artikel"

@@ -6,8 +6,8 @@ permalink: /zh-CN/2026/11/14/dspy-gepa-vs-miprov2/
 title: "写给后端工程师的 DSPy 详解：Signature、Optimizer，以及 GEPA 与 MIPROv2 怎么选"
 date: 2026-11-14
 tags: [dspy, llm, python, prompt-engineering]
-excerpt: "DSPy 把提示词当作编译产物，而不是手改的源码。这个框架如何工作——signature、module、optimizer——以及两大优化策略的正面对决：GEPA 与 MIPROv2，附一个可运行的 Spring Boot 故障分诊示例。"
-description: "DSPy 是什么？写给后端工程师的提示词优化指南：Signature、Module、Optimizer 三大抽象如何工作，GEPA 与 MIPROv2 的原理对比与选型决策规则，附可运行的 Spring Boot 故障分诊示例与成本分析。"
+excerpt: "DSPy 把提示词当作编译产物，而不是手改的源码。本文讲清它的工作方式（signature、module、optimizer），并对两大优化策略 GEPA 与 MIPROv2 做正面对比，附一个可运行的 Spring Boot 故障分诊示例。"
+description: "DSPy 是什么？写给工程师的提示词优化指南：signature、module、GEPA 与 MIPROv2 的原理对比，附可运行示例和选型建议。"
 tech_icon: "fas fa-wand-magic-sparkles"
 og_image:
   header:
@@ -24,75 +24,72 @@ faq:
   - question: "什么是 DSPy？"
     answer: "DSPy 是斯坦福 NLP 开源的 Python 框架，用**带类型的任务声明和一个优化编译器**取代手写提示词。你描述任务*接收什么输入、产出什么输出*（signature），用普通 Python 组合步骤（module），写一个评分指标，然后 optimizer 自动生成并调优能最大化该指标的提示词和 few-shot 示例。换了模型，重新编译即可，不用重写提示词。"
   - question: "DSPy 里 GEPA 和 MIPROv2 有什么区别？"
-    answer: "两者都是 DSPy 的 optimizer，但搜索方式不同。**MIPROv2** 预先生成一组固定的候选指令和 few-shot demo 组合，再用贝叶斯优化在小批量评估上挑出最优组合。**GEPA**（Genetic-Pareto）运行*反思式进化*：一个强力的反思 LLM 根据「为什么预测错了」的自然语言反馈重写指令，帕累托前沿会保留在每个验证用例上至少一项最优的所有候选。GEPA 论文中，它在六个任务上以相当的成本整体领先 MIPROv2 超过 10%。实操规则：指标能给出丰富反馈 → 选 GEPA；指标只是标量或需要 demo 选择 → 选 MIPROv2。"
+    answer: "两者都是 DSPy 的 optimizer，但搜索方式不同。**MIPROv2** 预先生成一组固定的候选指令和 few-shot demo 组合，再用贝叶斯优化在小批量评估上挑出最优组合。**GEPA**（Genetic-Pareto）运行*反思式进化*：一个强力的反思 LLM 根据「为什么预测错了」的自然语言反馈重写指令，帕累托前沿会保留在每个验证用例上至少一项最优的所有候选。GEPA 论文报告，在六个任务上它以相近的成本领先 MIPROv2 超过 10 个百分点（GPT-4.1 Mini 实验中的 LM 开销约为 86 美元对 76 美元）。实操规则：指标能给出丰富反馈 → 选 GEPA；指标只是普通标量，或需要挑选 demo → 选 MIPROv2。"
   - question: "用 DSPy 优化一个程序需要多少条标注样本？"
-    answer: "DSPy 官方文档建议**至少 30 条才能见到价值，约 300 条达到生产质量**。大致按 20% 训练、80% 验证划分——与神经网络训练正好相反——因为 optimizer 是在验证集上给每个候选打分的。文档经验值：约 10 条够 BootstrapFewShot 用，BootstrapFewShotWithRandomSearch 需要 50 条以上，200 条以上才值得跑长时间的 MIPROv2。如果你的指标能返回足够的文本反馈，GEPA 几条样本也能工作。"
+    answer: "DSPy 文档建议**至少 30 条才能见到价值，约 300 条达到生产质量**。大致按 20% 训练、80% 验证划分——与神经网络训练正好相反——因为 optimizer 会在验证集上给每个候选打分。文档给出的经验值：BootstrapFewShot 约 10 条就够，BootstrapFewShotWithRandomSearch 需要 50 条以上，有 200 条以上才值得跑较长的 MIPROv2。如果指标能返回有价值的文本反馈，GEPA 靠少量样本也能起效。"
   - question: "DSPy 会微调模型权重吗？"
-    answer: "默认不会。旗舰 optimizer（MIPROv2、GEPA、COPRO）调的是**提示词参数**：指令和 few-shot 演示。你对模型 API 的调用保持只读。DSPy 3.x 也提供权重学习型 optimizer——用于强化学习的 `dspy.GRPO`，以及把提示词优化与微调结合的 `dspy.BetterTogether`——但对纯 API 模型来说，提示词优化才是你真正会用到的部分。"
+    answer: "默认不会。主力 optimizer（MIPROv2、GEPA、COPRO）调的是**提示词参数**：指令和 few-shot 示例，对模型 API 的调用保持只读。DSPy 3.x 也自带会改动权重的 optimizer：`BootstrapFinetune`、用于强化学习的实验性 GRPO 模块，以及把提示词优化与微调串起来的 `BetterTogether`。但对只能通过 API 调用的模型来说，真正用得上的是提示词优化。"
   - question: "DSPy 能配合本地或自托管模型使用吗？"
-    answer: "可以。`dspy.LM` 支持 **Ollama**（`ollama_chat/llama3.2:1b`）、vLLM、SGLang，以及任何通过 `openai/...` 加自定义 `api_base` 接入的 OpenAI 兼容端点。优化出的指令还能跨模型迁移：GEPA 论文报告，在 Qwen3-8B 上进化出的提示词复用到 GPT-4.1 Mini 上仍提升约 9%——Shopify 宣称把一个 GPT-5 任务迁到小型本地模型后成本降低约 75 倍，靠的正是这一点。"
+    answer: "可以。`dspy.LM` 支持 **Ollama**（`ollama_chat/llama3.2:1b`）、vLLM、SGLang，以及任何通过 `openai/...` 加自定义 `api_base` 接入的 OpenAI 兼容端点。优化后的指令还能跨模型迁移：GEPA 论文报告，在 Qwen3-8B 上进化出的提示词复用到 GPT-4.1 Mini 上，仍能带来约 9% 的提升。Shopify 宣称把一个 GPT-5 任务迁到小型 Qwen 模型后成本降低约 75 倍，思路与此一致（该数字引自 DSPy 文档转述的 Shopify 演讲，我没找到原始出处，请当作厂商的自述）。"
   - question: "什么情况下不该用 DSPy？"
-    answer: "当你**没有任何办法给输出打分**时别用它——每个 optimizer 的上限就是你的指标。问题已解决、只剩一条稳定提示词时也别用它，框架的抽象税买不到任何东西。而如果你负担得起无限量的 RL rollout，权重优化可能仍然胜过提示词进化——GEPA 论文明确指出，只有当 rollout 昂贵或权重不可触及时，提示词进化才是赢家。"
+    answer: "**没有任何办法给输出打分**时别用它，因为每个 optimizer 的上限就是你的指标。问题已经解决、只剩一条稳定提示词时也别用，框架的抽象成本换不来任何收益。如果你负担得起海量 RL rollout，权重优化仍可能胜过提示词进化：GEPA 论文明确指出，提示词进化的优势在于 rollout 昂贵或权重无法访问的场景。"
 ---
 
 # 写给后端工程师的 DSPy 详解：Signature、Optimizer，以及 GEPA 与 MIPROv2 怎么选
 
-如果你维护过一个长期演进的 Spring Boot 服务，你已经懂配置和代码的区别。你不会在生产机器上
-手改 `application.yml` 里的值，也不会凭感觉调连接池大小——你声明它们、度量它们，并通过一个
-经过评审、可复现的流程去修改它们。
+如果你维护过长期运行的 Spring Boot 服务，就知道配置和代码的区别。你不会在生产机器上手改
+`application.yml` 里的值，也不会凭感觉调连接池大小，而是先声明、再度量，并通过经过评审、
+可复现的流程去修改。
 
-现在把这个视角套到 LLM 开发上。大多数团队「做 AI」的方式像极了我们在 2009 年做运维的样子：
-有人在 PR 里手改一条提示词字符串，在 notebook 里肉眼扫五个输出，上线，六周之后一次模型升级
-把它悄悄弄坏。
+现在用同样的眼光看 LLM 开发。大多数团队「做 AI」的方式，像极了 2009 年的运维：有人在 PR 里
+手改一段提示词字符串，在 notebook 里肉眼扫五条输出，就上线了；六周后一次模型升级，悄无声息地
+把它搞坏。
 
-**DSPy**（[dspy.ai](https://dspy.ai)）是斯坦福 NLP 的框架，它说：住手。把提示词当作
-**编译产物**。你写的是*源代码*——一份带类型的任务声明，用普通 Python 组合——外加一个给
-输出打分的**指标（metric）**。框架里叫 **optimizer** 的组件，随后针对你的指标、在你的数据上
-自动生成并调优真正的提示词。
+**DSPy**（[dspy.ai](https://dspy.ai)）是斯坦福 NLP 提出的框架，它的主张是：别再这样了，把提示词当作
+**编译产物**。你写的是*源代码*：一份带类型的任务声明，用普通 Python 组合；再加一个给输出打分的
+**指标（metric）**。名为 **optimizer** 的组件会根据你的指标，在你的数据上自动生成并调优真正的提示词。
 
-本文先解释它如何工作，然后深挖你一旦采用就必然面对的问题：**该用哪个 optimizer**。当下的
-两大主流策略是 **MIPROv2**（对指令和 few-shot 示例做贝叶斯搜索）和 **GEPA**（帕累托前沿上
-的反思式提示进化，ICLR 2026 Oral）。它们的搜索方式不同、成本不同，对你的指标的要求也不同。
+本文先讲清它的工作方式，再深入你采用 DSPy 之后必然要面对的问题：**该选哪个 optimizer**。目前的
+两大主流策略是 **MIPROv2**（对指令和 few-shot 示例做贝叶斯搜索）与 **GEPA**（在帕累托前沿上做
+反思式提示词进化，ICLR 2026 Oral）。它们的搜索方式不同、成本不同，对指标的要求也不同。
 
-所有内容都落在一个我为本文写的可运行小示例上：一个 **Spring Boot 生产故障分诊**程序，把
-日志行和堆栈分类到根因类别。这是这个博客常驻的领域——而且它足够小，跑一轮优化的成本以
-美分计，不是以美元计。
+文中所有内容都基于我为本文写的一个可运行小示例：**Spring Boot 生产故障分诊**程序，把日志行和
+堆栈信息归类到根因类别。这正是本博客一贯关注的领域，而且规模足够小，完整跑一轮优化的成本也很低。
 
-技术栈：**Python、DSPy 3.5、任意 LLM 提供商**。
+技术栈：**Python 3.11+、DSPy 3.5、任意 LLM 提供商**。
 
 <div class="post-tldr" markdown="1">
 <p class="post-tldr-title">TL;DR</p>
 
-- **DSPy = 提示词即构建产物。**你声明一个 `Signature`（带类型的输入/输出），用 Python 组合 `Module`，写一个指标——然后 **optimizer** 把它编译成调优过的指令 + few-shot 示例。换模型变成重新编译，而不是重写提示词。
-- 核心循环放之四海皆准：**程序 + 30 条左右标注样本 + 指标 → `optimizer.compile(program, trainset=...)` → 一份可保存、可 diff 的产物。**源码里不出现提示词字符串。
-- **MIPROv2** = 提出候选网格（指令 × demo），用小批量评估上的**贝叶斯优化**挑赢家。全能型选手；长时间运行想要 200+ 样本；指标是普通浮点数。
-- **GEPA** = **反思式进化**：一个强 LLM 根据「为什么预测错了」的*文本反馈*重写指令，**帕累托前沿**保住在任一用例上获胜的候选。在六个基准任务上以相当成本领先 MIPROv2 **超过 10%**（ICLR 2026 Oral），并以最多少 **35 倍**的 rollout 数达到与 RL 微调相当的效果。
-- 决策规则：**指标能用文字解释错误 → GEPA。指标是黑盒标量，或需要 demo 选择 → MIPROv2。**两者都不动你的程序代码。
+- **DSPy = 提示词即构建产物。** 你声明 `Signature`（带类型的输入/输出），用 Python 组合 `Module`，再写一个指标，**optimizer** 就会把它编译成调优过的指令加 few-shot 示例。换模型只需重新编译，不必重写提示词。
+- 各处通用的核心流程：**程序 + 约 30 条标注样本 + 指标 → `optimizer.compile(program, trainset=...)` → 一份可保存、可 diff 的产物。** 源码里不再出现提示词字符串。
+- **MIPROv2** = 先生成候选网格（指令 × demo），再用小批量评估上的**贝叶斯优化**挑出最优组合。是个全能型选手；跑较长的优化需要 200 条以上样本；指标就是普通浮点数。
+- **GEPA** = **反思式进化**：一个强力 LLM 根据「预测为什么错了」的*文本反馈*重写指令，**帕累托前沿**则保留在任何单个用例上表现最好的候选。在六个基准任务上，它以相近的成本领先 MIPROv2 **超过 10 个百分点**（ICLR 2026 Oral），并以最多少 **35 倍**的 rollout 胜过 GRPO 微调。
+- 决策规则：**指标能用文字解释错误 → GEPA；指标是黑盒标量，或需要挑选 demo → MIPROv2。** 两者都不会改动你的程序代码。
 </div>
 
 ---
 
 ## 什么是 DSPy？
 
-DSPy 是一个开源 Python 框架，最初由斯坦福 NLP 构建（该项目现归入 Databricks 旗下开发），
-2022 年 12 月以 Demonstrate-Search-Predict 编译器的身份首次发布。当前的 DSPy 3.x 线是采用最广
-的 LLM 框架之一——每月数百万次下载、GitHub 星数约 4 万——它的文档标语用五个词概括了
-哲学：**「Program, don't prompt.」（编程，而非调提示词。）**
+DSPy 是斯坦福 NLP 开源的 Python 框架，源自 2022 年 12 月的 Demonstrate-Search-Predict 研究。
+目前的 3.x 版本应用广泛：撰文时 PyPI 月下载量达数百万次，GitHub 星标约 4 万。项目自己的一句话
+介绍就概括了它的理念：用编程而非提示的方式使用语言模型。
 
-前提是：提示词不是源码。它是*输出*——三个你能像源码一样维护的输入编译之后的结果：
+它的前提是：提示词不是源码，而是*产物*，由三项你完全可以像源码一样维护的输入编译而来：
 
 1. **任务是什么**——一个带类型的接口：输入、输出、约束。
 2. **步骤如何组合**——普通的 Python 控制流。
 3. **什么算「正确」**——一个作用于标注样本的指标函数。
 
-手写 #1–#3，让算法产出提示词。模型换了，你不重写提示词——你**重新编译**。
+手写 #1 到 #3，让算法产出提示词。模型换了，你不用重写提示词，而是**重新编译**。
 
-如果你曾经为同一个功能同时维护 GPT-4 提示词、Claude 提示词和本地 Llama 提示词，你已经明白
-这件事为什么重要。这与我们从手改服务器配置走向声明式基础设施，是同一种本能。
+如果你曾为同一个功能同时维护 GPT-4、Claude 和本地 Llama 三份提示词，就明白这有多重要。
+这和当年我们从手改服务器配置转向声明式基础设施，是同一种直觉。
 
 ## DSPy 的工作原理：Signature、Module、Optimizer
 
-DSPy 需要学的抽象恰好只有三个。这就是框架的全部。
+DSPy 要学的抽象只有三个，这就是整个框架。
 
 ```mermaid
 flowchart LR
@@ -106,8 +103,8 @@ flowchart LR
 
 ### 什么是 DSPy Signature？
 
-**Signature** 是对任务输入/输出行为的声明式规约——可以理解为带语义的方法签名，而不只是
-类型。字段名本身携带含义；DSPy 会在幕后把它们变成提示词。
+**Signature** 是对任务输入/输出行为的声明式规约，可以理解为带语义的方法签名，而不只是类型。
+字段名本身就承载含义，DSPy 会在幕后把它们转换成提示词。
 
 ```python
 class IncidentTriage(dspy.Signature):
@@ -131,26 +128,26 @@ class IncidentTriage(dspy.Signature):
     action: str = dspy.OutputField(desc="One-sentence remediation")
 ```
 
-注意 signature 给了你什么是提示词字符串给不了的：**解析器能强制的结构**。`root_cause` 是
-`Literal` 类型——模型不能回答 `Probably database stuff`，它必须返回六个值之一，否则 DSPy 的
-adapter 会重试并抛错。这与「把 JSON 映射成带类型的 DTO，而不是手工解析字符串」是同一块
-肌肉记忆。
+注意 signature 提供了提示词字符串给不了的东西：**解析器可以强制执行的结构**。`root_cause` 是
+`Literal` 类型，模型不能回答 `Probably database stuff`，必须返回六个值之一，否则 DSPy 的
+adapter 会重试并最终抛出异常。这就像把 JSON 映射成带类型的 DTO，而不是手工解析字符串，
+是同样的工程习惯。
 
 ### 什么是 DSPy Module？
 
-**Module** 是一种可复用的提示策略，泛化到任意 signature 之上——相当于把 PyTorch
-`nn.Module` 的思想套在提示词上。它们全部构建在 `dspy.Predict` 之上；知名的有：
+**Module** 是一种可复用的提示策略，可以套用到任意 signature 上，思路类似 PyTorch 的
+`nn.Module`，只不过作用对象是提示词。它们都构建在 `dspy.Predict` 之上，常见的有：
 
-| Module | 抽象的策略 |
+| Module | 所封装的策略 |
 |---|---|
 | `dspy.Predict(sig)` | 直接补全 |
 | `dspy.ChainOfThought(sig)` | 在答案前加一步推理 |
-| `dspy.ReAct(sig, tools=[...])` | 面向 agent 的推理 + 工具调用循环 |
+| `dspy.ReAct(sig, tools=[...])` | 面向 agent 的「推理 + 工具调用」循环 |
 | `dspy.ProgramOfThought(sig)` | 生成并运行代码来作答 |
-| `dspy.BestOfN(sig, N)` | 采样 N 个候选，保留得分最高者 |
+| `dspy.BestOfN(sig, N)` | 采样 N 个候选，保留得分最高的 |
 
-你的程序是 `dspy.Module` 的子类，其 `forward()` 用普通 Python——条件、循环、你自己的类——
-组合子模块。下面是我们故障分诊示例的*全部*模型代码：
+你的程序是 `dspy.Module` 的子类，其 `forward()` 用普通 Python（条件、循环、你自己的类）来
+组合子模块。故障分诊示例的*整个*模型就是下面这些：
 
 ```python
 class IncidentTriageProgram(dspy.Module):
@@ -162,23 +159,23 @@ class IncidentTriageProgram(dspy.Module):
         return self.triage(incident_report=incident_report)
 ```
 
-看看这个文件里**没有**什么：没有提示词文本，没有 few-shot 示例，没有模型名，没有
-temperature。它们存在——但作为*参数*存在，这恰恰是它们可被优化的原因。调用程序会返回带
-类型的字段（`root_cause`、`severity`、`action`），外加一个由 `ChainOfThought` 为思考步骤加上
-的 `reasoning` 字段。
+再看这个文件里**没有**什么：没有提示词文本，没有 few-shot 示例，没有模型名，也没有
+temperature。这些东西依然存在，只是以*参数*的形式存在，这正是它们能被优化的原因。调用程序会
+返回带类型的字段（`root_cause`、`severity`、`action`），外加 `ChainOfThought` 为推理步骤添加的
+`reasoning` 字段。
 
 ### 什么是 DSPy Optimizer？
 
-**Optimizer**（旧称 *teleprompter*）是一种算法，它调优你程序的参数——指令和/或 few-shot
-demo——以最大化你的指标。few-shot demo 是一条已解决的输入→输出示例，被注入提示词；
-指令则是 DSPy 为每个模块生成的系统级指令。
+**Optimizer**（旧称 *teleprompter*）是一种算法，负责调优程序的参数，也就是指令和/或
+few-shot demo，使你的指标最大化。few-shot demo 是注入提示词的一条已解决的「输入→输出」
+示例；指令则是 DSPy 为每个 module 生成的系统级指示。
 
-`optimizer.compile(program, trainset=...)` 就是一个货真价实的编译步骤：它在数据上运行你的
-程序、度量、搜索，返回一个**编译后的程序**，其 predictor 已带上调优过的指令和 demo。用
-`program.save("optimized.json")` 保存它——一份可 diff、可评审的产物，就像评审一条迁移脚本
-那样。
+`optimizer.compile(program, trainset=...)` 就是名副其实的编译步骤：它在数据上运行你的程序，
+度量并搜索，最后返回一个**编译后的程序**，其中各 predictor 已带上调优过的指令和 demo。
+用 `program.save("optimized.json")` 保存下来，就得到一份可 diff、可评审的产物，评审方式和
+迁移脚本一样。
 
-评估侧只需一次调用：
+评估只需一次调用：
 
 ```python
 evaluate = dspy.Evaluate(
@@ -190,28 +187,27 @@ evaluate = dspy.Evaluate(
 result = evaluate(program)
 ```
 
-DSPy 文档的规模建议：**约 30 条标注样本开始有价值，约 300 条达到生产质量**——按约 20%
-训练 / 80% 验证划分，因为 optimizer 会拿验证集给每个候选打分。这是刻意与深度学习实践
-*相反*的：你不是在拟合权重，而是在一个小得多的空间里搜索，验证集就是罗盘。
+DSPy 文档给出的数据量建议是：**约 30 条标注样本就能看到价值，约 300 条可达生产质量**。
+划分比例约为 20% 训练、80% 验证，因为 optimizer 会用验证集给每个候选打分。这恰好与深度学习
+的惯例*相反*：你不是在拟合权重，而是在小得多的空间里搜索，验证集就是指南针。
 
-还有一件事值得内化：**你的指标就是契约**。本文的每个 optimizer 都只和打分函数一样聪明。
-对分类任务，精确匹配的指标就够了。对模糊任务，DSPy 自带 `SemanticF1`——它本身就是一个小
-DSPy 程序——你还可以写返回部分得分的断言式指标。
+另一点值得牢记：**指标就是契约**。本文的每个 optimizer，聪明程度都不会超过给输出打分的那个
+函数。分类任务用精确匹配的指标就够了；对于模糊的任务，DSPy 提供了 `dspy.evaluate.SemanticF1`
+（它本身就是一个小型 DSPy 程序），你也可以自己写能给部分分的指标。
 
 ---
 
 ## 实战示例：Spring Boot 生产故障分诊
 
-理论到此为止。本文的配套仓库实现了一个每个后端工程师都认得的任务：on-call 分诊。给定
-一行日志或一段堆栈摘录，分类出**根因**（六个类别）、**严重级别**（P1/P2/P3），并给出一句
-修复建议。
+理论讲得够多了。本文的配套仓库实现了每个后端工程师都熟悉的任务：on-call 故障分诊。给定一行
+日志或一段堆栈摘录，判断**根因**（六个类别）和**严重级别**（P1/P2/P3），并给出一句修复建议。
 
-数据集是 24 条手工打造、刻意贴近现实的故障——Hikari 连接池超时、Jackson 升级后的
-`NoSuchMethodError`、一个 `@Transactional` 方法在慢速远程调用期间占着连接、一个 heap 没事但
-metaspace 出事的 OOMKilled pod……14 条训练、10 条验证。刻意做小：DSPy 文档说 30 条左右开始
-有价值，这也让整轮优化的成本保持在美分级别。
+数据集是 24 条手工编写、刻意贴近真实的故障：Hikari 连接池超时、升级 Jackson 后出现的
+`NoSuchMethodError`、`@Transactional` 方法在慢速远程调用期间一直占着连接、堆内存正常但
+metaspace 撑爆而被 OOMKilled 的 pod……其中 14 条用于训练，10 条用于验证。规模刻意做小：DSPy
+文档称 30 条左右才开始见效，而小数据集能让一次运行的成本保持低廉。
 
-指标有两个变体——这个拆分正是后文 GEPA 与 MIPROv2 之争的关键：
+指标有两个版本，这个拆分正是后面比较 GEPA 与 MIPROv2 的关键：
 
 ```python
 def triage_metric(example, pred, trace=None) -> float:
@@ -237,33 +233,33 @@ def triage_metric_with_feedback(example, pred, trace=None, pred_name=None, pred_
                            feedback=" ".join(problems) or "Correct root cause and severity.")
 ```
 
-同一个任务、同一套评分——一个版本回答*「差多少？」*，另一个还回答*「为什么错？」*。
-记住这一点，它马上就要变得非常重要。
+同一个任务、同一套评分：一个版本只回答*「得了多少分」*，另一个还能回答*「为什么错」*。
+下面两个 optimizer 的差别，正在于此。
 
 ## 主要的优化策略
 
-DSPy 自带约十来个 optimizer，分四个家族。你真正会二选一的，是最后两个。
+DSPy 自带十几个 optimizer，分为四个系列。真正需要你二选一的是最后两个。
 
-| Optimizer | 调优对象 | 搜索策略 | 所需数据量 |
+| Optimizer | 调优对象 | 搜索策略 | 数据量要求 |
 |---|---|---|---|
-| `BootstrapFewShot` | 仅 demo | 运行 teacher，保留通过指标的轨迹 | 约 10+ |
-| `BootstrapFewShotWithRandomSearch` | 仅 demo | Bootstrap + 随机搜索变体 | 50+ |
-| `COPRO` | 仅指令 | 坐标上升式爬山改写 | 任意 |
-| `MIPROv2` | 指令 **+ demo** | 提出候选网格，**贝叶斯优化** | 长时间运行需 200+ |
-| `GEPA` | 指令（经 `dspy.Flex` 也可改代码） | 帕累托前沿上的**反思式进化** | 少量即可，前提是指标给反馈 |
+| `BootstrapFewShot` | 仅 demo | 运行 teacher，保留通过指标的 trace | 约 10 条以上 |
+| `BootstrapFewShotWithRandomSearch` | 仅 demo | Bootstrap + 对多个变体随机搜索 | 50 条以上 |
+| `COPRO` | 仅指令 | 对改写结果做坐标上升式爬山 | 不限 |
+| `MIPROv2` | 指令 **+ demo** | 生成候选网格，再做**贝叶斯优化** | 长时间运行需 200 条以上 |
+| `GEPA` | 指令（经 `dspy.Flex` 也可改代码） | 帕累托前沿上的**反思式进化** | 少量即可，前提是指标能给出反馈 |
 
 ### MIPROv2：对指令和 demo 的贝叶斯搜索
 
-**MIPROv2**（Multiprompt Instruction PRoposal Optimizer v2）是 DSPy 的主力干将——「帮我优化
-一下」这个问题的长期默认答案。它分三个阶段运行：
+**MIPROv2**（Multiprompt Instruction PRoposal Optimizer v2）是 DSPy 的主力 optimizer，也是
+「先帮我优化一下」这类需求长期以来的默认选择。它分三个阶段运行：
 
-1. **Bootstrap demo**——生成 `num_candidates` 组 few-shot 示例：一部分直接复制自标注，
-   另一部分通过运行你自己的程序 *bootstrap* 出来，保留输出通过指标的轨迹。
-2. **提出指令**——一个 `prompt_model` 为每个模块撰写指令候选，依据包括数据集摘要、你程序
-   的源码、bootstrap 出的 demo，外加一条随机的创意提示。
-3. **贝叶斯搜索**——采样（指令， demo）组合，在 35 条样本的小批量上评估，更新代理模型，
-   并在它预测有改进的地方重新采样。每隔几步做一次完整验证集评估。`num_trials` 之后，
-   最优程序胜出。
+1. **Bootstrap demo**：生成 `num_candidates` 组 few-shot 示例，一部分直接取自标注数据，
+   另一部分通过运行你自己的程序来 *bootstrap*，只保留输出通过指标的 trace。
+2. **生成指令**：由 `prompt_model` 为每个 module 撰写候选指令，依据是数据集摘要、程序源码、
+   bootstrap 得到的 demo，以及一条随机的「创意提示」。
+3. **贝叶斯搜索**：采样（指令，demo）组合，在 35 条样本的小批量上评估，更新代理模型，并在
+   模型预测会有提升的区域重新采样；每隔几步在完整验证集上评估一次。跑完 `num_trials` 后，
+   选出最优程序。
 
 ```python
 optimizer = dspy.MIPROv2(
@@ -281,16 +277,16 @@ optimized = optimizer.compile(
 optimized.save("optimized/miprov2_triage.json")
 ```
 
-心智模型是**一个被聪明采样器探索的固定候选网格**。这有一个真实后果：MIPROv2 只能从它的
-proposer 事先想到要生成的指令候选里挑。如果这些候选没有一个编码了你任务需要的领域洞见
-（「先比对堆栈签名，再判断严重级别」），贝叶斯搜索无法发明它——它只能挑出网格里最不差的
-那个点。
+可以把它理解为**由聪明的采样器去探索的一张固定候选网格**。这会带来一个实际后果：MIPROv2 只能
+从 proposer 事先生成的候选指令里挑选。如果没有一条候选包含你的任务所需的领域洞察（比如
+「先匹配堆栈特征，再判断严重级别」），贝叶斯搜索也无法凭空发明，只能在网格里挑出相对最好的
+那一个。
 
 ### GEPA：帕累托前沿上的反思式提示进化
 
-**GEPA**（Genetic-Pareto）——[Agrawal et al., 2025](https://arxiv.org/abs/2507.19457)，
-已被接收为 **ICLR 2026 Oral**——正面解决了这个局限。它是一种进化搜索，只不过*变异算子是
-一个会读反馈的 LLM*：
+**GEPA**（Genetic-Pareto）出自 [Agrawal et al., 2025](https://arxiv.org/abs/2507.19457)，
+入选 **ICLR 2026 Oral**，正是针对这一局限而设计。它是一种进化搜索，区别在于*变异算子是一个会
+阅读反馈的 LLM*：
 
 ```mermaid
 flowchart TD
@@ -306,22 +302,23 @@ flowchart TD
     M2 --> W["Return best aggregate candidate"]
 ```
 
-四个想法让它成立：
+它有四个关键设计：
 
-- **指标返回反馈，而不只是一个数字。**这正是示例里 `triage_metric_with_feedback` 返回
-  `dspy.Prediction(score, feedback)` 的原因。DSPy 文档说得很直白：给 GEPA 一个裸浮点数，
-  你得到的是「它自身的一个弱化得多的版本」。反馈文本会*一字不差*地进入反思 LM 的
-  提示词——「你说 `thread-starvation`，正确标签是 `memory-pressure`；在容器限额处 OOMKilled
-  且 heap 占用很低，说明受限的是*容器*」——于是每次变异都是有依据的，而不是随机瞎撞。
-- **帕累托选择，而不是赢家通吃。**MIPROv2 只保留一个现任最优；那些整体平庸但在*特定切面*
-  上*最好*的候选（比如说，序列化错误）照样会被淘汰。GEPA 的前沿让每个这样的专才都活着，
-  并从它们之中采样。早期「偏科」的候选得以存活、留到后面重组——这也是遗传算法保持种群
-  多样性的同一理由。论文做了消融实验：相对于贪婪的「永远选最好」，帕累托采样最多值约 8%
-  的整体提升。
-- **系统感知合并**（`use_merge=True`）：当两个谱系各自学到了互补的优势，GEPA 会尝试合并
-  它们最好的模块——用遗传算法的术语说，就是交叉算子。
+- **指标返回的是反馈，而不只是一个数字。** 这就是示例中 `triage_metric_with_feedback` 返回
+  `dspy.Prediction(score, feedback)` 的原因。DSPy 文档说得很直接：只给 GEPA 一个裸浮点数，
+  得到的是「一个弱得多的 GEPA」。反馈文本会*原样*放进反思 LM 的提示词，例如「你回答的是
+  `thread-starvation`，正确标签是 `memory-pressure`；容器内存限额处 OOMKilled 而堆占用很低，
+  说明瓶颈在*容器*」，这样每次变异都有依据，而不是随机试错。
+- **用帕累托选择，而不是赢家通吃。** MIPROv2 只保留一个当前最优者，那些整体平庸、却在*某一类
+  样本*（比如序列化错误）上表现最好的候选，照样会被淘汰。GEPA 的前沿则让每个这样的「偏科生」
+  都留下来，并从中采样。早期的专精候选得以存活，之后还能重组，这与遗传算法要保持种群多样性
+  是同一个道理。论文做过消融实验：在 Qwen3 8B 上，帕累托采样比始终选择当前最优候选，综合
+  得分高出约 6 个点。
+- **系统感知合并**（`use_merge=True`）：当两条谱系各自学到互补的长处时，GEPA 会尝试合并它们
+  最好的 module，用遗传算法的术语说就是交叉算子。
 - **预算只有一个旋钮**：`auto`（`light`/`medium`/`heavy`）、`max_full_evals`、`max_metric_calls`
-  三者恰好设置其一。对一个双 predictor、100 条样本的程序，`light` ≈ 1,330 次指标调用。
+  三者必须且只能设置一个。`light` 大约会评估六个候选提示词；实际的指标调用次数随验证集大小和
+  predictor 数量增长，建议先在小验证集上试一下。
 
 ```python
 optimizer = dspy.GEPA(
@@ -334,56 +331,56 @@ optimizer = dspy.GEPA(
 optimized = optimizer.compile(program, trainset=trainset, valset=valset)
 ```
 
-两条来自生产使用的运维备注。第一，**反思 LM 是最贵的旋钮**——它串行运行（每轮少量调用，
-中等预算下约 12–36 次），所以要给它比任务模型更强的模型；DSPy 官方教程在那里用的就是
-前沿模型。第二，设置 `track_stats=True`：结果会携带 `detailed_results`，包含**每个候选、它的
-父谱系和逐样本验证得分**——一份提示词如何演化的审计轨迹，可以导出成 JSON，像评审 PR 一样
-过一遍。
+有两点运维上的提示。第一，**反思 LM 值得多花钱**：每次运行只会调用它几次，所以要给它配比任务
+模型更强的模型；DSPy 文档也建议，优化较小的模型时，反思环节用更大的模型。第二，设置
+`track_stats=True`：结果中的 `detailed_results` 包含**每个候选、它的父代谱系和逐样本验证得分**，
+这是一份提示词演化过程的审计记录，可以导出成 JSON，像评审 PR 一样检查。
 
-GEPA *改动*的东西刻意很窄：只有每个 predictor 的 `signature.instructions`。你的模块组合、你的
-代码、你的 demo——一概不动。优化出的指令跨模型迁移的表现也出奇地好：论文报告，在
-Qwen3-8B 上进化出的提示词复用到 GPT-4.1 Mini 上仍提升约 9%。
+GEPA *改动*的范围刻意收得很窄：只有每个 predictor 的 `signature.instructions`。你的 module 组合、
+代码和 demo 都不会动。优化后的指令跨模型迁移的效果也相当不错：论文报告，在 Qwen3-8B 上进化出
+的提示词复用到 GPT-4.1 Mini 上，仍能带来约 9% 的提升。
 
-## GEPA 对比 MIPROv2：你该用哪个 Optimizer？
+## GEPA 与 MIPROv2：该选哪个 Optimizer？
 
-同一个框架、同一个程序、同一个指标函数——不同的搜索范式。这是诚实的对比：
+同样的框架、同样的程序、同样的指标函数，搜索范式却不同：
 
 | 维度 | MIPROv2 | GEPA |
 |---|---|---|
-| 范式 | 固定候选网格上的**贝叶斯优化** | 开放候选集上的**反思式进化** |
+| 范式 | 在固定候选网格上做**贝叶斯优化** | 在开放候选集上做**反思式进化** |
 | 调优对象 | 指令 **+ few-shot demo** 联合调优 | 仅指令（经 `dspy.Flex` 也可改代码） |
 | 指标契约 | 普通标量（float/bool） | `dspy.Prediction(score, feedback)`——逐 predictor 反馈 |
-| 搜索记忆 | 单个历史最优（best-so-far） | **帕累托前沿**：逐用例赢家 + 合并 |
+| 搜索记忆 | 只保留当前最优的一个候选 | **帕累托前沿**：各用例的最优者 + 合并 |
 | 预算旋钮 | `auto` 或 `num_candidates` + `num_trials` | 恰好一个：`auto` / `max_full_evals` / `max_metric_calls` |
-| 典型提示词 | 更长（被 few-shot demo 撑大） | 指令最多可**缩短 9.2 倍**（论文实测） |
-| 数据建议 | 长时间运行 200+ 样本才出彩 | 少量样本即可，*前提是反馈够丰富*；valset 保持小 |
-| 代表性结果 | 稳健默认；文档示例中 ReAct 24%→51% | 6 个任务**领先 MIPROv2 超过 10%**；AIME 2025 上 +12% |
+| 典型提示词 | 更长（few-shot demo 会让它变大） | 指令最多**短 9.2 倍**（论文实测） |
+| 数据建议 | 200 条以上样本、长时间运行才能发挥优势 | 少量样本即可，*前提是反馈足够丰富*；valset 宜小 |
+| 代表性结果 | 稳健的默认选择；文档中的 ReAct 示例：8% → 约 42%（MIPROv2，`medium`） | 6 个任务上**领先 MIPROv2 10 个点以上**（出自论文摘要） |
 
-论文里的成本数字比准确率数字更有意思。在 GPT-4.1 Mini 实验上，总 LM 开销是 **GEPA 86 美元
-对 MIPROv2 76 美元**——相当——换来约两倍的整体收益（+13.3% 对 +5.6%）。对照 RL 微调
-（GRPO），GEPA 用 **243–1,179 次 rollout 对 24,000 次**就达到了它最好的验证得分——样本效率
-最高好 78 倍——同时平均再高出 +6%（最高 +20%）。这就是你在社交媒体上看到的「比 RL 便宜
-10–80 倍」这一说法的经同行评审的版本。
+论文里的成本数字比准确率数字更有意思。在 GPT-4.1 Mini 的实验中，总 LM 开销是 **GEPA 86 美元、
+MIPROv2 76 美元**，相差不大，但综合提升约为后者的两倍（+12.2 个点对 +5.6 个点；GEPA+Merge 为
++13.3）。对比 RL 微调（GRPO），GEPA 只用 **243 到 1,179 次 rollout（GRPO 为 24,000 次）**就达到了
+GRPO 的最佳验证得分，样本效率最高达 78 倍，平均还比 GRPO 高 6 个点（最高 20 个点）。需要注意，
+这些都是论文自己的基准和实验设置，不等于你的实际负载；但它是社交媒体上「比 RL 便宜」这一说法
+经过同行评审的版本。
 
-**我的决策规则**，来自在同一个任务上把两个都跑通之后：
+**我会这样决策**，依据是两者的设计原理：
 
-- **当你的指标能用文字解释错误时，选 GEPA。**带原因的分类、对照 schema 校验的抽取、按步骤
-  轨迹评判的 agent——任何「为什么错」可以用语言表达的地方。反馈是燃料；没有它，你是在用
-  一个瞎掉的适应度函数跑进化。
-- **当你的指标是黑盒，或 demo 比指令更重要时，选 MIPROv2。**如果你的程序欠拟合是因为缺少
-  上下文示例（而不是指令写错了），MIPROv2 的指令+demo 联合搜索是更对的杠杆。它也是更温和
-  的第一级台阶：不用配置第二个模型，标量指标直接可用。
-- **无论哪边，都先做一次廉价探针**：用标量指标跑 `BootstrapFewShotWithRandomSearch` 几乎零
-  成本，而且常常能告诉你差距出在 *demo*（它能补上）还是*指令*（它补不上——那就是
-  MIPROv2/GEPA 的地盘了）。
+- **指标能用文字解释错误时，选 GEPA。** 带理由的分类、按 schema 校验的信息抽取、按步骤 trace
+  评判的 agent，凡是「错在哪里」能说清楚的场景都适用。反馈是它的燃料，没有反馈，就等于用
+  一个盲目的适应度函数做进化。
+- **指标是黑盒，或者 demo 比指令更重要时，选 MIPROv2。** 如果程序表现不佳是因为缺少上下文
+  示例（而不是指令写得不对），MIPROv2 对指令和 demo 的联合搜索更对症。它也是更平缓的入门
+  台阶：不用额外配置第二个模型，普通标量指标即可使用。
+- **无论选哪个，都可以先做一次低成本的探测：** 用标量指标跑 `BootstrapFewShotWithRandomSearch`，
+  几乎不花钱，往往就能看出差距来自 *demo*（它能补上），还是来自*指令*（它补不上，这时就该
+  上 MIPROv2 或 GEPA）。
 
-而且两者并不互斥。DSPy 3.x 提供 `BetterTogether`，在同一个程序上串联提示词优化和权重优化
-（例如先 GEPA 再 GRPO）——用提示词进化找到策略，当你负担得起 rollout 时，再用 RL 把它压缩
-进权重。
+两者也并不互斥。DSPy 3.x 提供了 `BetterTogether`，可以在同一个程序上串联提示词优化和权重优化
+（例如先 GEPA，再微调）：先用提示词进化找到策略，等预算允许 rollout 时，再用 RL 把它固化进
+权重。
 
 ## 运行示例
 
-上面的一切都是五分钟能跑起来的代码。配套仓库：
+上面的内容都可以用代码跑起来，五分钟即可。配套仓库如下：
 
 ```bash
 git clone https://github.com/javaAndScriptDeveloper/dspy-article
@@ -400,44 +397,44 @@ uv run python 02_optimize_miprov2.py # Bayesian search → optimized/miprov2_tri
 uv run python 03_optimize_gepa.py    # reflective evolution → optimized/gepa_triage.json
 ```
 
-默认值：任务模型 `openai/gpt-4o-mini`，GEPA 反思模型 `openai/gpt-4o`（可用 `DSPY_MODEL` /
-`DSPY_REFLECTION_MODEL` 覆盖）。在 24 条样本上，两轮优化的成本都在美分级。
+默认配置：任务模型为 `openai/gpt-4o-mini`，GEPA 反思模型为 `openai/gpt-4o`（可通过 `DSPY_MODEL` /
+`DSPY_REFLECTION_MODEL` 覆盖）。数据集只有 24 条样本，所以一次运行规模很小；实际花费请查看
+所用服务商的用量页面。我特意没有在这里贴准确率数字：10 条验证样本只能用来演示流程跑通，算不上
+基准测试。请在你自己的模型上把三个脚本都跑一遍、对比得分，再决定相信哪个 optimizer。
 
-最值得亲手做的一步：每轮结束后，把保存的 JSON 与源程序 diff 一下。`02_optimize_miprov2.py`
-会写入指令并注入 few-shot demo。`03_optimize_gepa.py` 会重写指令——而
-`optimized/gepa_results.json` 保存着完整的进化谱系：每个候选、它的父辈、逐样本得分。那一个
-文件就是 DSPy 全部论点的浓缩：**提示词是输出，不是源码。**
+最值得亲自动手的一步：每次运行结束后，把保存下来的 JSON 与源程序对比一下。`02_optimize_miprov2.py`
+会写入指令并注入 few-shot demo；`03_optimize_gepa.py` 则会重写指令，而 `optimized/gepa_results.json`
+保存着完整的进化谱系：每个候选、它的父代，以及逐样本得分。把它和你的程序源码并排打开，道理就
+一目了然：**提示词是输出，不是源码。**
 
 ## 什么时候不该用 DSPy？
 
-诚实章节，因为每个框架的布道都需要一章这个。
+这一节说句实话，因为每份框架推介都该有这么一节。
 
-- **没有指标，就没有 DSPy。**如果你没法给输出打分——哪怕打得不准——optimizer 就没有可爬
-  的坡。构建评估集和指标才是真正的工作；DSPy 只是自动化了针对它们的搜索。（跳过这一步、
-  靠手调提示词的团队，是在*凭感觉*做搜索，数据还更差。）
-- **问题已解决、只剩一条稳定提示词？**别交抽象税。当程序是多步骤的、模型频繁更替、或质量
-  差距在烧真金白银时，DSPy 才有回报。
-- **RL 预算无限且权重可训练？**GEPA 论文说得很明白：当 rollout 昂贵、数据有限或权重被 API
-  冻结时，提示词进化是赢家。rollout 管够的场景里，GRPO 式微调仍然更强。不同的工具，
-  不同的经济学。
-- **提示词的主人是你。**编译产物是针对*你的指标*调优的——拿一个与生产不符的代理指标去
-  优化，你会交付一个为错误目标精心优化过的程序。规则一如既往：你的评估套件*就是*你的规格
-  说明。
+- **没有指标，就别用 DSPy。** 如果你没法给输出打分（哪怕打分不准），optimizer 就没有可以攀爬的
+  梯度。构建评估集和指标才是真正的工作，DSPy 只是把针对它们的搜索自动化了。（跳过这一步、
+  靠手工调提示词的团队，其实是在用更差的数据*凭感觉*做搜索。）
+- **只有一条稳定的提示词、问题也已解决？** 那就不必再引入抽象成本。DSPy 适合多步骤的程序、
+  模型频繁更换，或质量差距正在造成实际损失的场景。
+- **RL 预算无限、权重也可训练？** GEPA 论文说得很明确：提示词进化的优势在于 rollout 昂贵、数据有限，
+  或者权重被 API 锁定的场景；而在 rollout 充足的条件下，GRPO 式微调仍占上风。工具不同，
+  成本结构也不同。
+- **提示词要自己掌握。** 编译产物是针对*你的指标*调优的：如果拿一个与生产环境不一致的代理指标去
+  优化，交付的就是一个为错误目标精心优化的程序。规则一如既往：评估套件*就是*你的规格说明。
 
 ---
 
-值得带走的模式，是这个博客在其他领域反复环绕的那一个：把运行时的判断搬进声明的、可度量
-的、可版本化的产物。我们为基础设施做过这件事，然后为 schema 迁移做过；DSPy 为技术栈里最后
-一件手改的产物——提示词字符串——做了这件事。optimizer 是有趣的部分——但*纪律*才是回报。
-提示词不再是有人凌晨两点随手调一调的东西，而变成模型、数据或指标变化时由 CI 重新生成的
-东西。
+后端技术栈的每个环节都已经经历过这样的演进：配置变成了代码，schema 变成了迁移脚本，基础设施
+变成了声明式定义。提示词字符串是最后一个还有人在凌晨两点手改的产物。DSPy 给出的答案和其他环节
+被验证过的做法一样：声明它，度量它，版本化它。optimizer 是其中有意思的部分，但真正带来回报的
+是这套工程纪律：当模型、数据或指标发生变化时，提示词由 CI 重新生成。
 
-如果你想对 optimizer 做第二次更深的功课，一手资料非常出色：[GEPA 论文](https://arxiv.org/abs/2507.19457)
+如果想进一步深入了解 optimizer，一手资料都很出色：[GEPA 论文](https://arxiv.org/abs/2507.19457)
 （ICLR 2026 Oral）、[MIPROv2 论文](https://arxiv.org/abs/2406.11695)，以及
-[官方 DSPy 优化指南](https://dspy.ai/learn/optimization/overview/)，里面还有一个
-[step-by-step 的 optimizer 选择器](https://dspy.ai/diving-deeper/choosing-an-optimizer/)。
+[DSPy 官方优化指南](https://dspy.ai/learn/optimization/overview/)，其中还有一份
+[分步式 optimizer 选择指南](https://dspy.ai/diving-deeper/choosing-an-optimizer/)。
 
 *本文代码见
 **[github.com/javaAndScriptDeveloper/dspy-article](https://github.com/javaAndScriptDeveloper/dspy-article)**。
-整条流水线支持离线验证——`uv sync && uv run python smoke_test.py` 无需 API key 即可跑完一轮
-完整的 GEPA 优化——在自带的 24 条样本数据集上，真实运行的成本也只有几美分。*
+整条流程都可以离线验证：`uv sync && uv run python smoke_test.py` 无需 API key，即可跑完一轮完整的
+GEPA 优化循环；真实运行则使用规模很小的 24 条样本数据集。*

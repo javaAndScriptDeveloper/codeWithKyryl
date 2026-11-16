@@ -99,9 +99,9 @@ naturaleza, donde el usuario ya espera tener que esperar.
 
 En esencia, cualquier tabla outbox necesita tres cosas:
 
-- **Estado** — en qué punto de su ciclo de vida está esta tarea?
-- **Payload** — qué hay que ejecutar exactamente?
-- **Timestamps** — cuándo se creó y cuándo cambió por última vez?
+- **Estado** — ¿en qué punto de su ciclo de vida está esta tarea?
+- **Payload** — ¿qué hay que ejecutar exactamente?
+- **Timestamps** — ¿cuándo se creó y cuándo cambió por última vez?
 
 ```sql
 CREATE TYPE task_state AS ENUM ('PENDING', 'COMPLETED');
@@ -242,7 +242,7 @@ ejecutarla. El resultado es, en el mejor de los casos, trabajo duplicado; en el 
 corrupto.
 
 La solución es un lock de base de datos tomado al momento del fetch. El `SELECT ... FOR UPDATE
-SKIP LOCKED` de PostgreSQL está construido a medida justo para este caso de uso: bloquea la fila
+SKIP LOCKED` de PostgreSQL está pensado justo para este caso de uso: bloquea la fila
 para la transacción actual y salta cualquier fila ya bloqueada por otra transacción, en lugar de
 esperar.
 
@@ -269,7 +269,7 @@ reutilizable para no dispersar el número mágico entre tus repositorios:
 public @interface SkipLocked {}
 ```
 
-Mucho más limpio. Ahora el repositorio expresa la intención, no la plomería:
+Mucho más limpio. Ahora el repositorio expresa la intención, no los detalles de implementación:
 
 ```java
 @SkipLocked
@@ -429,7 +429,7 @@ El error más común aquí es usar `@EventListener` en lugar de
 `@EventListener` se dispara en el momento en que se llama a `publishEvent()` — que está
 **dentro de la transacción abierta**, antes de que el `INSERT` haya hecho commit. El listener
 llama a `fetchAndProcess()`, que consulta la base de datos por la tarea mediante su ID. La fila
-aún no existe. La tarea se salta en silencio, el evento se pierde, y te quedas preguntándote por
+aún no existe. La tarea se salta en silencio, el evento se pierde, y te quedas sin entender por
 qué el procesamiento nunca comenzó — aunque el scheduler eventualmente la recoge segundos más
 tarde y todo se ve bien en los logs.
 
@@ -480,7 +480,7 @@ abierta. El enfoque de transacción con lock mantiene un lock de base de datos d
 duración de `generateReport()`. Para un reporte que tarda dos minutos, son dos minutos de una
 fila bloqueada — una conexión ocupada, otras operaciones de BD potencialmente encoladas detrás.
 Con `SKIP LOCKED` los workers no se bloquean entre sí por el lock, pero las transacciones largas
-igual presionan el pool de conexiones y ponen la base de datos de mal humor bajo carga. Una
+igual presionan el pool de conexiones y degradan el rendimiento de la base de datos bajo carga. Una
 acción muy pequeña puede técnicamente completarse sin causar problemas visibles, pero acoplar la
 duración de la transacción a la duración de la ejecución del outbox sigue siendo un antipatrón.
 
@@ -503,7 +503,7 @@ ALTER TABLE report_generation_tasks
 `retry_count` registra cuántas veces se intentó la ejecución. Limitamos los reintentos a 10 —
 más allá de eso, algo está genuinamente roto y necesita intervención manual. Más adelante
 conectaremos alertas alrededor de esto. `error_message` guarda la última excepción para que
-sepas *por qué* una tarea está atascada sin tener que excavar en los logs.
+sepas *por qué* una tarea está atascada sin tener que rastrear los logs.
 
 El enum de Java crece con él:
 
@@ -590,14 +590,14 @@ Optional<ReportGenerationEntity> findFirstEligibleTask(
 ```
 
 Pero espera — ¿debería una tarea recién fallida recogerse de nuevo en el siguiente tick del
-scheduler, segundos después? Si el sistema downstream está caído, martillarlo cada segundo
+scheduler, segundos después? Si el sistema downstream está caído, saturarlo cada segundo
 empeora las cosas. De eso trata la siguiente sección.
 
 ## Parte 4 — Backoff exponencial
 
 Sin un retardo entre reintentos, una tarea fallida reingresa a la cola en el siguiente tick del
 scheduler — usualmente segundos después. Si el sistema downstream está caído, lo estás
-martillando a toda la tasa de polling. Eso es malo para el sistema downstream y malo para tu BD.
+saturando a toda la tasa de polling. Eso es malo para el sistema downstream y malo para tu BD.
 
 La solución es una columna `execute_at`: la tarea no es elegible hasta que este timestamp esté
 en el pasado. Las tareas nuevas reciben `execute_at = now()` para que se recojan de inmediato.
@@ -1014,7 +1014,7 @@ reloj de esa instancia.
 
 Conserva `created_at` para observabilidad. Usa `seq` para el orden.
 
-Si el FIFO estricto importa en tu sistema — no olvides esto.
+Si el FIFO estricto importa en tu sistema, no lo pases por alto.
 
 ---
 
@@ -1039,7 +1039,7 @@ CREATE INDEX idx_outbox_fetch
     WHERE state IN ('PENDING', 'FAILED');
 ```
 
-Para probarlo: inserté 50,000 filas con solo 7 en estado `PENDING`, activé el logging SQL en modo
+Para probarlo: inserté 50 000 filas con solo 7 en estado `PENDING`, activé el logging SQL en modo
 debug de Hibernate para obtener la consulta exacta generada en la consola, y ejecuté
 `EXPLAIN ANALYZE` sobre ese SQL:
 
@@ -1052,7 +1052,7 @@ Planning Time: 1.230 ms
 Execution Time: 0.139 ms
 ```
 
-0.03ms para encontrar la tarea elegible más antigua. Las 49,993 filas `COMPLETED` nunca se
+0.03ms para encontrar la tarea elegible más antigua. Las 49 993 filas `COMPLETED` nunca se
 leyeron. A mí me convence.
 
 Dos índices más para las otras dos operaciones en segundo plano:
@@ -1081,7 +1081,7 @@ Tu outbox es una tabla operativa. Cada consulta de fetch la recorre. Las filas v
 muerto.
 
 La regla: borra solo las tareas **`COMPLETED`**. Las tareas `FAILED` son tu rastro de auditoría.
-No las toques. Géstionalas manualmente o mediante un proceso de ops separado cuando haga falta.
+No las toques. Gestiónalas manualmente o mediante un proceso de ops separado cuando haga falta.
 
 ```java
 @Modifying
@@ -1189,9 +1189,9 @@ servicios downstream dejan de recibir eventos. Cuando alguien mira los logs, ya 
 
 Tres señales cubren por completo el espacio de fallas, según el modelo de Google SRE:
 
-- **Latencia** — cuánto tarda cada tarea desde que se recoge hasta que se completa? Un pico aquí significa que el handler es lento o la BD está bajo presión.
-- **Throughput** — cuántas tareas por unidad de tiempo terminan? Que caiga a cero significa que el scheduler no está corriendo o que no se están reclamando tareas.
-- **Tasa de error** — qué fracción de los intentos termina en falla? Por encima de ~5% significa que una dependencia downstream está degradada y el rezago de reintentos crece.
+- **Latencia** — ¿cuánto tarda cada tarea desde que se recoge hasta que se completa? Un pico aquí significa que el handler es lento o la BD está bajo presión.
+- **Throughput** — ¿cuántas tareas por unidad de tiempo terminan? Que caiga a cero significa que el scheduler no está corriendo o que no se están reclamando tareas.
+- **Tasa de error** — ¿qué fracción de los intentos termina en falla? Por encima de ~5% significa que una dependencia downstream está degradada y el rezago de reintentos crece.
 
 <img src="{{ site.baseurl }}/assets/img/outbox-grafana-dashboard.png" alt="Grafana outbox dashboard" style="max-width: 100%; height: auto; border-radius: 8px; border: 1px solid #e5e7eb;">
 
@@ -1285,14 +1285,14 @@ números.
 Antes de llevar cualquier outbox a producción:
 
 ```
-☐ Indexes are efficient — partial indexes on PENDING/FAILED and PROCESSING states
-☐ EXPLAIN ANALYZE confirms index usage on the fetch query
-☐ Ordering is not a problem — ORDER BY seq or created_at, backed by index
-☐ Processed data cleanup job running, COMPLETED rows removed after retention period
-☐ Idempotency handled inside handlers with side effects
-☐ Exponential backoff wired — or confirmed not needed for this use case
-☐ Metrics in place — queue depth, throughput, error rate, latency
-☐ Alerts configured — backlog, error rate, latency, stuck tasks
+☐ Los índices son eficientes: índices parciales sobre los estados PENDING/FAILED y PROCESSING
+☐ EXPLAIN ANALYZE confirma el uso del índice en la consulta de fetch
+☐ El orden no es un problema: ORDER BY seq o created_at, respaldado por un índice
+☐ Job de limpieza en marcha: las filas COMPLETED se eliminan tras el periodo de retención
+☐ Idempotencia resuelta dentro de los handlers con efectos secundarios
+☐ Backoff exponencial implementado, o confirmado como innecesario para este caso de uso
+☐ Métricas en su sitio: profundidad de la cola, throughput, tasa de error, latencia
+☐ Alertas configuradas: backlog, tasa de error, latencia, tareas atascadas
 ```
 
 ---

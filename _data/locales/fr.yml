@@ -15,7 +15,7 @@ footer:
 
 home:
   hero_subtitle: "J'écris sur ce qui casse réellement en prod."
-  latest_title: "Dernières transmissions"
+  latest_title: "Derniers articles"
   article_badge: "Article"
   continue_reading: "Poursuivre la lecture"
   view_all_articles: "Voir tous les articles"
@@ -23,20 +23,20 @@ home:
   practice_note: "La partie pratique — quiz et laboratoire d'incidents de production — est actuellement disponible en anglais."
   practice_note_cta: "Explorer la pratique en anglais"
   about_title: "À propos"
-  about_p1: "Je suis <span class=\"about-highlight\">Kyryl</span>. Je construis des <span class=\"about-highlight\">backends Java</span> : des services Spring Boot qui tiennent la charge et ne me réveillent pas à 3h du matin."
-  about_p2: "Dernièrement, une bonne partie de mon temps passe sur les <span class=\"about-highlight\">outils IA</span> : <span class=\"about-highlight\">Claude</span> au quotidien, <span class=\"about-highlight\">DSPy</span> pour les fonctionnalités LLM, Python quand Java n'est pas le bon outil. J'écris sur ce que cela change vraiment."
+  about_p1: "Je suis <span class=\"about-highlight\">Kyryl</span>. Je conçois des <span class=\"about-highlight\">backends Java</span> : des services Spring Boot qui tiennent la charge et ne me réveillent pas à 3h du matin."
+  about_p2: "Depuis quelque temps, je consacre une bonne partie de mon temps aux <span class=\"about-highlight\">outils IA</span> : <span class=\"about-highlight\">Claude</span> au quotidien, <span class=\"about-highlight\">DSPy</span> pour les fonctionnalités LLM, Python quand Java n'est pas le bon outil. J'écris sur ce que cela change réellement."
   about_p3: "Les deux sujets reçoivent le même traitement ici : du vrai code issu de repos exécutables, ce qui a marché, ce qui a raté, et ce que je ferais autrement."
   contact_title: "Restons en contact"
-  contact_subtitle: "Une question, une idée de sujet, ou juste envie de parler backend ? Je ne suis qu'à un message."
+  contact_subtitle: "Une question, une idée de sujet, ou simplement envie de parler backend ? Écrivez-moi."
 
 tutorials:
   h1: "Archives des tutoriels"
   subtitle: "Parcourez tous les articles par thème"
   article_badge: "Article"
   continue_reading: "Poursuivre la lecture"
-  no_results_title: "Aucune transmission trouvée"
-  no_results_text: "Aucun article ne correspond aux tags sélectionnés. Essayez d'ajuster votre filtre."
-  showing_js: "Affichage de :start-:end sur :total transmissions"
+  no_results_title: "Aucun article trouvé"
+  no_results_text: "Aucun article ne correspond aux tags sélectionnés. Essayez de modifier votre filtre."
+  showing_js: "Affichage de :start-:end sur :total articles"
 
 post:
   article_badge: "Article"

@@ -7,7 +7,7 @@ title: "Kafka peut-il remplacer Redis pour la synchronisation de cache ? La rép
 date: 2026-08-08
 tags: [kafka, spring-boot, java, distributed-systems]
 excerpt: "Un thread Reddit demandait si Kafka peut remplacer Redis pour diffuser les mises à jour de cache à 25 pods Spring Boot. Voici un pattern que j'ai vu tenir en production pendant des années — un topic compacté, un consumer group par pod et une porte de readiness — avec un exemple docker-compose exécutable."
-description: "Kafka vs Redis pour la synchro de cache entre pods Spring Boot ? Un pattern de production : topic compacté, consumer group par pod, gating de readiness."
+description: "Kafka vs Redis pour la synchro de cache entre pods Spring Boot ? Un pattern de production : topic compacté, consumer group par pod, porte de readiness."
 tech_icon: "fas fa-stream"
 faq:
   - question: "Kafka peut-il remplacer Redis pour la synchronisation de cache entre pods ?"
@@ -150,7 +150,7 @@ Il y a deux phases : **reconstruire le réplica local**, puis **le maintenir à 
    listener que l'aspect de suivi avance la position traitée de cette partition. Un échec du listener ne peut
    donc pas faire prétendre à la porte que l'enregistrement en échec a été appliqué.
 5. Quand chaque partition atteint sa cible capturée, la readiness passe à `UP`. La plateforme de déploiement peut
-   alors router les requêtes vers le pod, et les jobs planifiés gated par la readiness peuvent s'exécuter. Les
+   alors router les requêtes vers le pod, et les jobs planifiés conditionnés à la readiness peuvent s'exécuter. Les
    lectures utilisent la map locale et n'appellent pas Kafka.
 6. Le même consommateur reste actif après le démarrage. Les nouveaux enregistrements mettent à jour ou
    suppriment les entrées locales à leur arrivée, ainsi les pods convergent indépendamment et sont à cohérence
@@ -284,7 +284,7 @@ le replay n'est pas terminé.
 > Ne recevez pas de trafic, n'exécutez pas de jobs planifiés et n'effectuez aucun autre travail externe tant que
 > la configuration n'a pas été consommée.
 
-C'est la partie qu'il est facile d'escamoter et coûteux d'escamoter. Un pod qui se déclare « prêt » dès qu'on
+C'est la partie qu'il est facile de bâcler, et qui coûte cher quand on la bâcle. Un pod qui se déclare « prêt » dès qu'on
 lui assigne des partitions n'est prêt que de nom — il a peut-être rejoué trois enregistrements sur trois mille.
 Les requêtes frappent un cache presque vide ; un job planifié tourne sur des défauts périmés ; personne ne le
 remarque jusqu'à ce que quelqu'un demande pourquoi le pod 14 s'est comporté différemment pendant deux minutes
@@ -409,7 +409,7 @@ Le service Docker Compose de l'exemple utilise le même endpoint comme `healthch
 l'application comme saine qu'après la fin du replay. Cela reflète la vérification de disponibilité d'une
 plateforme de déploiement ; l'état de santé de Compose lui-même ne contrôle pas le routage du trafic.
 
-Quatrièmement, gater les jobs planifiés (ou toute autre méthode de bean) de la même façon, sans répéter la
+Quatrièmement, conditionnez de la même façon les jobs planifiés (ou toute autre méthode de bean), sans répéter la
 vérification `if (!tracker.isFullyConsumed()) return;` à chaque site d'appel : une seconde annotation,
 `@ReadinessGated`, plus son propre petit aspect qui saute l'appel entièrement tant que la porte n'est pas
 ouverte — c'est ce dont `CacheSnapshotJob.logSnapshot` ci-dessus est réellement annoté :
@@ -512,8 +512,8 @@ du broker, et filtrez les groupes inactifs dans vos outils.
 ### Une configuration volumineuse n'a pas sa place dans chaque pod
 
 Ce pattern convient bien à un petit jeu de configuration lu fréquemment. Si la configuration est volumineuse,
-garder tout le jeu de données en mémoire locale est généralement une mauvaise idée. Chaque pod a besoin de
-assez de heap pour sa propre copie, et ajouter des pods multiplie ce coût mémoire. Conservez une configuration
+garder tout le jeu de données en mémoire locale est généralement une mauvaise idée. Chaque pod a besoin d'assez
+de heap pour sa propre copie, et ajouter des pods multiplie ce coût mémoire. Conservez une configuration
 volumineuse dans un stockage partagé, ou matérialisez seulement le petit sous-ensemble dont chaque service a
 réellement besoin.
 

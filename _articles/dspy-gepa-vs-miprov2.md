@@ -11,13 +11,13 @@ faq:
   - question: "What is DSPy in simple terms?"
     answer: "DSPy is an open-source Python framework from Stanford NLP that replaces hand-written prompts with **typed task declarations and an optimizing compiler**. You describe *what* a task takes as input and produces as output (a signature), compose steps in plain Python (modules), write a metric, and an optimizer automatically generates the prompts and few-shot examples that maximize that metric. When you swap models, you recompile instead of rewriting prompts."
   - question: "What is the difference between GEPA and MIPROv2 in DSPy?"
-    answer: "Both are DSPy optimizers, but they search differently. **MIPROv2** pre-generates a fixed grid of candidate instructions and few-shot demo sets, then picks the best combination with Bayesian optimization over minibatch evaluations. **GEPA** (Genetic-Pareto) runs *reflective evolution*: a strong reflection LLM rewrites instructions using natural-language feedback about why a prediction was wrong, and a Pareto frontier keeps every candidate that is best on at least one validation case. In the GEPA paper it beat MIPROv2 by over 10% on aggregate across six tasks at comparable cost. Practical rule: feedback-rich metric → GEPA; plain scalar metric or demo selection needed → MIPROv2."
+    answer: "Both are DSPy optimizers, but they search differently. **MIPROv2** pre-generates a fixed grid of candidate instructions and few-shot demo sets, then picks the best combination with Bayesian optimization over minibatch evaluations. **GEPA** (Genetic-Pareto) runs *reflective evolution*: a strong reflection LLM rewrites instructions using natural-language feedback about why a prediction was wrong, and a Pareto frontier keeps every candidate that is best on at least one validation case. The GEPA paper reports it beating MIPROv2 by more than 10 points across six tasks at similar cost (about $86 vs $76 of LM spend in their GPT-4.1 Mini runs). Practical rule: feedback-rich metric → GEPA; plain scalar metric or demo selection needed → MIPROv2."
   - question: "How many examples do I need to optimize a program with DSPy?"
     answer: "The DSPy docs recommend **at least 30 examples to see value and around 300 for production quality**. Split roughly 20% for training and 80% for validation — the opposite of neural network training — because optimizers score every candidate on the validation set. Rule of thumb from the docs: about 10 examples is enough for BootstrapFewShot, 50+ for BootstrapFewShotWithRandomSearch, and 200+ makes longer MIPROv2 runs worthwhile. GEPA works from a handful of examples if your metric returns good textual feedback."
   - question: "Does DSPy fine-tune model weights?"
-    answer: "Not by default. The flagship optimizers (MIPROv2, GEPA, COPRO) tune the **prompt parameters**: instructions and few-shot demonstrations. Your model API calls stay read-only. DSPy 3.x also ships weight-learning optimizers — `dspy.GRPO` for reinforcement learning and `dspy.BetterTogether` to combine prompt optimization with fine-tuning — but for API-only models, prompt optimization is the part you will actually use."
+    answer: "Not by default. The flagship optimizers (MIPROv2, GEPA, COPRO) tune the **prompt parameters**: instructions and few-shot demonstrations. Your model API calls stay read-only. DSPy 3.x also ships weight-training optimizers — `BootstrapFinetune`, an experimental GRPO module for reinforcement learning, and `BetterTogether` to chain prompt optimization with fine-tuning — but for API-only models, prompt optimization is the part you will actually use."
   - question: "Does DSPy work with local or self-hosted models?"
-    answer: "Yes. `dspy.LM` supports **Ollama** (`ollama_chat/llama3.2:1b`), vLLM, SGLang and any OpenAI-compatible endpoint via `openai/...` with a custom `api_base`. The optimized instructions also transfer across models: the GEPA paper reports prompts evolved on Qwen3-8B gained about 9% when reused on GPT-4.1 Mini, which is the use case behind Shopify's reported ~75x cost reduction by moving a GPT-5 task to a small local model."
+    answer: "Yes. `dspy.LM` supports **Ollama** (`ollama_chat/llama3.2:1b`), vLLM, SGLang and any OpenAI-compatible endpoint via `openai/...` with a custom `api_base`. The optimized instructions also transfer across models: the GEPA paper reports prompts evolved on Qwen3-8B gained about 9% when reused on GPT-4.1 Mini, which is the pattern behind Shopify's reported ~75x cost reduction from moving a GPT-5 task to a small Qwen model (a figure quoted in the DSPy docs from a Shopify talk; I could not find the underlying write-up, so treat it as a vendor claim)."
   - question: "When should you not use DSPy?"
     answer: "Skip it when you have **no way to grade outputs** — every optimizer is only as good as your metric. Skip it for one stable prompt on a solved problem, where the framework's abstraction tax buys nothing. And if you can afford unlimited rollouts for RL fine-tuning, weight optimization may still beat prompt evolution — the GEPA paper is explicit that prompt evolution wins when rollouts are expensive or weights are inaccessible."
 ---
@@ -51,9 +51,9 @@ different things from your metric.
 Everything is grounded in a small runnable example I built for this article:
 a **Spring Boot production-incident triage** program that classifies log lines
 and stack traces into root-cause categories. It's the domain this blog usually
-lives in — and it's small enough that optimizing it costs cents, not dollars.
+lives in — and it's small enough that a full optimization run stays cheap.
 
-Stack: **Python, DSPy 3.5, any LLM provider**.
+Stack: **Python 3.11+, DSPy 3.5, any LLM provider**.
 
 <div class="post-tldr" markdown="1">
 <p class="post-tldr-title">TL;DR</p>
@@ -61,7 +61,7 @@ Stack: **Python, DSPy 3.5, any LLM provider**.
 - **DSPy = prompts as build artifacts.** You declare a `Signature` (typed inputs/outputs), compose `Module`s in Python, write a metric — and an **optimizer** compiles it into tuned instructions + few-shot examples. Model changes become recompiles, not prompt rewrites.
 - The core loop is the same everywhere: **program + 30ish labeled examples + metric → `optimizer.compile(program, trainset=...)` → a saved, diffable artifact.** No prompt strings in your source.
 - **MIPROv2** = propose a candidate grid (instructions × demos), pick the winner with **Bayesian optimization** on minibatch evals. Great all-rounder; wants 200+ examples for long runs; metric is a plain float.
-- **GEPA** = **reflective evolution**: a strong LLM rewrites instructions using *textual feedback* about why predictions were wrong, and a **Pareto frontier** preserves candidates that win on any single case. Beat MIPROv2 by **over 10%** across six benchmark tasks at comparable cost (ICLR 2026 Oral), and matches RL fine-tuning with up to **35x fewer rollouts**.
+- **GEPA** = **reflective evolution**: a strong LLM rewrites instructions using *textual feedback* about why predictions were wrong, and a **Pareto frontier** preserves candidates that win on any single case. Beat MIPROv2 by **more than 10 points** across six benchmark tasks at comparable cost (ICLR 2026 Oral), and beat GRPO fine-tuning while using up to **35x fewer rollouts**.
 - Decision rule: **metric can explain mistakes in words → GEPA. Metric is a black-box scalar, or you need demo selection → MIPROv2.** Both leave your program code untouched.
 </div>
 
@@ -69,12 +69,11 @@ Stack: **Python, DSPy 3.5, any LLM provider**.
 
 ## What Is DSPy?
 
-DSPy is an open-source Python framework, originally built by Stanford NLP
-(the project is now developed under Databricks), first released as the
-Demonstrate-Search-Predict compiler in December 2022. The current line,
-DSPy 3.x, is one of the most widely adopted LLM frameworks — millions of
-monthly downloads and roughly 40k GitHub stars — and its documentation tagline
-captures the philosophy in five words: **"Program, don't prompt."**
+DSPy is an open-source Python framework from Stanford NLP. It grew out of the
+Demonstrate-Search-Predict research (December 2022), and the current 3.x line
+is widely used — several million monthly PyPI downloads and roughly 40k GitHub
+stars at the time of writing. The project's own one-liner is the philosophy in
+brief: programming, not prompting, language models.
 
 The premise: a prompt is not source code. It is an *output* — the compiled
 result of three inputs you *can* maintain like source code:
@@ -208,8 +207,8 @@ smaller space, and the validation set is the compass.
 One more thing worth internalizing: **your metric is the contract**. Every
 optimizer in this article is only as smart as the function grading outputs.
 For classification, an exact-match metric is fine. For fuzzy tasks, DSPy ships
-`SemanticF1` — itself implemented as a small DSPy program — plus you can write
-assertion-style metrics that return partial credit.
+`dspy.evaluate.SemanticF1` — itself implemented as a small DSPy program — plus you can write
+metrics that return partial credit.
 
 ---
 
@@ -225,7 +224,7 @@ timeouts, `NoSuchMethodError` after a Jackson upgrade, a `@Transactional`
 method holding a connection across a slow remote call, an OOMKilled pod whose
 heap is fine but whose metaspace isn't... 14 for training, 10 for validation.
 Tiny on purpose: DSPy's docs say value starts around 30 examples, and this
-keeps the whole run in the cents range.
+keeps a run cheap.
 
 The metric has two variants — and this split is the key to the GEPA vs
 MIPROv2 question later:
@@ -345,14 +344,16 @@ Four ideas make this work:
   slice* (say, serialization errors) get eliminated anyway. GEPA's frontier
   keeps every such specialist alive and samples from them. Early-specialist
   candidates survive to recombine later — the same reason genetic algorithms
-  keep diverse populations. The paper ablates this: Pareto sampling over
-  greedy "always pick the best" is worth up to ~8% aggregate.
+  keep diverse populations. The paper ablates this: on Qwen3 8B, Pareto
+  sampling beat always selecting the current best candidate by about 6 points
+  of aggregate score.
 - **System-aware merge** (`use_merge=True`): when two lineages each learned a
   complementary strength, GEPA tries merging their best modules — a crossover
   operator, in GA terms.
 - **Budget as one knob**: exactly one of `auto` (`light`/`medium`/`heavy`),
-  `max_full_evals`, or `max_metric_calls`. On a two-predictor program over 100
-  examples, `light` ≈ 1,330 metric calls.
+  `max_full_evals`, or `max_metric_calls`. `light` evaluates around six candidate
+  prompts; the real number of metric calls grows with your valset size and
+  predictor count, so check it on a small valset first.
 
 ```python
 optimizer = dspy.GEPA(
@@ -365,10 +366,10 @@ optimizer = dspy.GEPA(
 optimized = optimizer.compile(program, trainset=trainset, valset=valset)
 ```
 
-Two operational notes from production use. First, the **reflection LM is the
-expensive knob** — it runs serially (a handful of calls per run, ~12–36 on a
-medium budget), so give it a stronger model than the task model; DSPy's own
-tutorials use frontier models there. Second, set `track_stats=True`: the
+Two operational notes. First, the **reflection LM is the one to spend on** —
+it is called only a few times per run, so give it a stronger model than the
+task model; DSPy's docs recommend a larger model there when optimizing a
+smaller one. Second, set `track_stats=True`: the
 result carries `detailed_results` with **every candidate, its parent
 lineage, and per-example validation scores** — an audit trail of how the
 prompt evolved, which you can export to JSON and review like a PR.
@@ -393,17 +394,16 @@ paradigms:
 | Budget knobs | `auto` or `num_candidates` + `num_trials` | exactly one: `auto` / `max_full_evals` / `max_metric_calls` |
 | Typical prompts | Longer (few-shot demos inflate them) | Up to **9.2x shorter** instructions (paper measurement) |
 | Data guidance | 200+ examples for long runs shine | A handful works *if feedback is rich*; keep valset small |
-| Headline results | Solid default; ReAct 24%→51% in docs' example | **+10% over MIPROv2** across 6 tasks; +12% on AIME 2025 |
+| Headline results | Solid default; docs' ReAct example: 8% → ~42% (MIPROv2, `medium`) | **10+ points over MIPROv2** across 6 tasks (per the abstract) |
 
 The paper's cost numbers are more interesting than the accuracy ones. On
 GPT-4.1 Mini experiments, total LM spend was **$86 for GEPA vs $76 for
-MIPROv2** — comparable — for roughly double the aggregate gain (+13.3% vs
-+5.6%). Against RL fine-tuning (GRPO), GEPA matched its best validation scores
+MIPROv2** — comparable — for roughly double the aggregate gain (+12.2 points
+vs +5.6; GEPA+Merge: +13.3). Against RL fine-tuning (GRPO), GEPA matched its best validation scores
 after **243–1,179 rollouts vs 24,000** — up to 78x better sample efficiency —
-while averaging +6% (up to +20%) over GRPO. That's the peer-reviewed version
-of the "10–80x cheaper than RL" framing you'll see on social media.
+while averaging 6 points (up to 20) above GRPO. Those are the paper's own benchmarks and setups, not your workload — but it is the peer-reviewed version of the "cheaper than RL" claim you'll see on social media.
 
-**My decision rule**, after wiring both up on the same task:
+**The decision rule I'd use**, based on how the two are built:
 
 - **Choose GEPA when your metric can explain misses in words.** Classification
   with reasons, extraction validated against schemas, agents judged by
@@ -421,7 +421,7 @@ of the "10–80x cheaper than RL" framing you'll see on social media.
   territory).
 
 And they're not mutually exclusive. DSPy 3.x ships `BetterTogether`, which
-chains prompt optimization and weight optimization (e.g. GEPA then GRPO) on
+chains prompt optimization and weight optimization (e.g. GEPA, then fine-tuning) on
 the same program — prompt evolution to find the strategy, RL to compress it
 into weights when you can afford the rollouts.
 
@@ -445,8 +445,11 @@ uv run python 03_optimize_gepa.py    # reflective evolution → optimized/gepa_t
 ```
 
 Defaults: task model `openai/gpt-4o-mini`, GEPA reflection model
-`openai/gpt-4o` (override with `DSPY_MODEL` / `DSPY_REFLECTION_MODEL`). On 24
-examples both optimization runs land in the cents range.
+`openai/gpt-4o` (override with `DSPY_MODEL` / `DSPY_REFLECTION_MODEL`). The
+dataset is 24 examples, so a run is small; check your provider's usage page
+for the actual cost. I deliberately don't print accuracy numbers here: 10
+validation examples is a wiring demo, not a benchmark. Run all three scripts
+and compare the scores on your own model before believing any optimizer.
 
 The moment worth doing yourself: after each run, diff the saved JSON against
 the source program. `02_optimize_miprov2.py` will have written instructions
@@ -494,5 +497,4 @@ which includes a [step-by-step optimizer chooser](https://dspy.ai/diving-deeper/
 *Code from this article is available at
 **[github.com/javaAndScriptDeveloper/dspy-article](https://github.com/javaAndScriptDeveloper/dspy-article)**.
 The whole pipeline verifies offline — `uv sync && uv run python smoke_test.py`
-runs a full GEPA optimization loop with no API key — and the real runs cost
-cents on the bundled 24-example dataset.*
+runs a full GEPA optimization loop with no API key — and the real runs use a small 24-example dataset.*

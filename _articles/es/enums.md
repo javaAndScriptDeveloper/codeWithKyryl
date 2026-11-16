@@ -11,7 +11,7 @@ description: "Enums en PostgreSQL con Hibernate: @Enumerated ORDINAL vs STRING, 
 tech_icon: "fas fa-database"
 faq:
   - question: "¿Debería usar @Enumerated ORDINAL o STRING?"
-    answer: "Usa **STRING**. `@Enumerated(ORDINAL)` guarda la posición del enum (0, 1, 2…), así que insertar una nueva constante en cualquier lugar que no sea el final re-apunta silenciosamente todas las filas existentes. `@Enumerated(STRING)` guarda el nombre de la constante ('PAID'), que es autodescriptivo, se puede depurar directamente desde SQL y es inmune a reordenamientos. Los pocos bytes extra de almacenamiento son irrelevantes frente a la seguridad."
+    answer: "Usa **STRING**. `@Enumerated(ORDINAL)` guarda la posición del enum (0, 1, 2…), así que insertar una nueva constante en cualquier posición que no sea el final cambia en silencio el significado de todas las filas existentes. `@Enumerated(STRING)` guarda el nombre de la constante ('PAID'), que es autodescriptivo, se puede depurar directamente desde SQL y es inmune a reordenamientos. Los pocos bytes extra de almacenamiento son irrelevantes frente a la seguridad."
   - question: "¿Qué se rompe cuando agrego un valor de enum en medio con ORDINAL?"
     answer: "Cada fila guardada *después* de la constante insertada ahora decodifica al valor equivocado. Si `SHIPPED` era el ordinal 2 e insertas `PACKED` antes, `SHIPPED` pasa a ser 3 — pero todas las filas existentes siguen conteniendo el entero 2, que ahora se lee como `PACKED`. La base de datos no cambia; tu interpretación de ella sí. Protégete con una prueba unitaria que fije el `ordinal()` de cada constante."
   - question: "¿Cómo guardo un enum como un tipo enum de Postgres?"
@@ -25,7 +25,7 @@ faq:
 # Guardar enums en la base de datos: @Enumerated, tipos ENUM de Postgres y tablas de lookup
 
 Casi todo modelo de dominio tiene un campo que solo puede contener uno de un puñado de valores.
-Una orden está `PENDING`, `PAID`, `SHIPPED`, `DELIVERED` o `CANCELLED`. Un pago está autorizado o
+Un pedido pasa por `PENDING`, `PAID`, `SHIPPED`, `DELIVERED` o `CANCELLED`. Un pago está autorizado o
 capturado. Una suscripción está en uno de cuatro planes. En Java recurres a un `enum` sin
 pensarlo. La pregunta interesante es qué pasa en la frontera — **cómo ese conjunto finito de
 valores vive realmente en la base de datos**, y qué te cuesta cada opción seis meses después,
@@ -34,7 +34,7 @@ cuando el conjunto cambia.
 Este artículo recorre todas las formas comunes de persistir un enum con Hibernate, en el orden en
 que realmente las encontrarías: los dos modos de `@Enumerated`, un tipo `ENUM` real de Postgres,
 un `AttributeConverter`, y finalmente el enfoque de tabla de lookup, donde el enum se convierte en
-su propia tabla. Evolucionaré un solo ejemplo — el estado de una orden — a lo largo de todo el
+su propia tabla. Evolucionaré un solo ejemplo — el estado de un pedido — a lo largo de todo el
 camino, y terminaré con la opción que realmente tomo.
 
 Stack: **Java, Spring Boot, Hibernate, PostgreSQL**.
@@ -53,7 +53,7 @@ Stack: **Java, Spring Boot, Hibernate, PostgreSQL**.
 
 ## El escenario
 
-Estamos construyendo la gestión de órdenes. Una orden avanza por un ciclo de vida fijo:
+Estamos construyendo la gestión de pedidos. Un pedido avanza por un ciclo de vida fijo:
 
 ```mermaid
 stateDiagram-v2
@@ -77,7 +77,7 @@ public enum OrderStatus {
 }
 ```
 
-La entidad de la orden tiene un campo `status`. La única pregunta es cómo lo mapea Hibernate a una
+La entidad del pedido tiene un campo `status`. La única pregunta es cómo lo mapea Hibernate a una
 columna — y esa única decisión de anotación tiene consecuencias que sobreviven al código que
 escribes hoy.
 
@@ -110,7 +110,7 @@ CREATE TABLE orders_ordinal (
 );
 ```
 
-Guarda una orden con estado `PAID` y la columna contiene `1`. Es compacto y, sobre el papel, está
+Guarda un pedido con estado `PAID` y la columna contiene `1`. Es compacto y, sobre el papel, está
 bien.
 
 ### ❌ La trampa: insertar un valor en el medio
@@ -141,11 +141,11 @@ public enum OrderStatus {
 | `DELIVERED` | 3 | **4** |
 | `CANCELLED` | 4 | **5** |
 
-Nada cambió en la base de datos. Cada orden `SHIPPED` existente sigue conteniendo el entero `2` —
-pero `2` ahora decodifica a `PACKED`. Las órdenes enviadas se convierten silenciosamente en
-empacadas. Las entregadas se vuelven enviadas. No hay error, ni migración fallida, ni línea de
+Nada cambió en la base de datos. Cada pedido `SHIPPED` existente sigue conteniendo el entero `2` —
+pero `2` ahora decodifica a `PACKED`. Los pedidos enviados pasan silenciosamente a
+empacados. Los entregados pasan a enviados. No hay error, ni migración fallida, ni línea de
 log. Los datos no se movieron; tu interpretación de ellos sí. Te enteras cuando un cliente
-pregunta por qué su orden entregada dice que se está empacando.
+pregunta por qué su pedido entregado figura como en empaquetado.
 
 ### La protección: fija los ordinales
 
@@ -196,12 +196,12 @@ CREATE TABLE orders_string (
 );
 ```
 
-Una orden `PAID` guarda la cadena literal `'PAID'`. Tres cosas mejoran de inmediato:
+Un pedido `PAID` guarda la cadena literal `'PAID'`. Tres cosas mejoran de inmediato:
 
 - **Reordenar es inofensivo.** El valor es su propio nombre; las posiciones ya no importan. Agrega
   `PACKED` donde quieras.
-- **Es depurable.** `SELECT * FROM orders_string WHERE status = 'PAID'` se lee solo. Sin anillo
-  decodificador, sin estar uniendo mentalmente contra tu código fuente Java.
+- **Es depurable.** `SELECT * FROM orders_string WHERE status = 'PAID'` se lee solo. Sin tabla
+  de equivalencias, sin estar uniendo mentalmente contra tu código fuente Java.
 - **Los dumps y los logs se autodescriben.** Una fila en una exportación CSV significa algo por sí
   sola.
 
@@ -226,7 +226,7 @@ de ser un evento por completo en la Parte 4.
 
 ---
 
-## Parte 3 — Buen estilo: un tipo ENUM real de Postgres
+## Parte 3 — Buena práctica: un tipo ENUM real de Postgres
 
 Ambas opciones anteriores guardan en una columna que la base de datos realmente no entiende — un
 `smallint` o un `varchar` que *resulta* contener valores de enum. Postgres puede hacerlo mejor.
@@ -256,7 +256,7 @@ la constante como string y Postgres lo guarda en el enum:
 private OrderStatus status;
 ```
 
-Hay exactamente una pieza de fontanería. Por defecto el driver JDBC de PostgreSQL envía un
+Solo hay un detalle de configuración que cuidar. Por defecto el driver JDBC de PostgreSQL envía un
 `String` de Java como tipo `varchar`, y Postgres no hará un cast implícito de `varchar` →
 `order_status`, así que obtendrías `column "status" is of type order_status but expression is of
 type character varying`. Agrega `stringtype=unspecified` a la URL JDBC y el driver envía el valor
@@ -354,7 +354,7 @@ conseguir con tablas de lookup. Ten esto en mente para la siguiente parte.
 ## Parte 5 — El enfoque de tabla de lookup
 
 El último enfoque deja de tratar el estado como un enum por completo. En su lugar, el conjunto de
-estados vive en su propia tabla, y las órdenes referencian una fila por clave foránea:
+estados vive en su propia tabla, y los pedidos referencian una fila por clave foránea:
 
 ```sql
 CREATE TABLE order_statuses (
@@ -394,7 +394,7 @@ public class OrderLookup {
 }
 ```
 
-Para saber qué estado tiene una orden — su etiqueta legible por humanos, si es terminal — haces un
+Para saber qué estado tiene un pedido — su etiqueta legible por humanos, si es terminal — haces un
 **join**:
 
 ```sql
@@ -415,7 +415,7 @@ uno, viven en **datos** en lugar de en **código**. Eso es genuinamente valioso 
 - **Personas no desarrolladoras gestionan los valores**, o se configuran por tenant, o cambian en
   tiempo de ejecución sin un deploy.
 - **Tienes cambios masivos genuinos** — renombras una etiqueta que aparece en millones de filas
-  actualizando una fila en `order_statuses`, no cada orden.
+  actualizando una fila en `order_statuses`, no cada pedido.
 
 Ese último punto es el argumento más fuerte: cambiar en un lugar, no en todos. Si tu "enum" es
 realmente un catálogo mantenido, este es el modelo correcto.

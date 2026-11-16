@@ -7,7 +7,7 @@ title: "O Kafka Pode Substituir o Redis na Sincronização de Cache? Uma Respost
 date: 2026-08-08
 tags: [kafka, spring-boot, java, distributed-systems]
 excerpt: "Uma thread no Reddit perguntou se o Kafka pode substituir o Redis para difundir atualizações de cache a 25 pods Spring Boot. Este é um padrão que vi se sustentar em produção por anos — um tópico compactado, um consumer group por pod e um gate de readiness — com um exemplo executável em docker-compose."
-description: "O Kafka pode substituir o Redis na sincronização de cache entre pods Spring Boot? Padrão de produção: tópico compactado, consumer group por pod e readiness."
+description: "Dá para trocar o Redis pelo Kafka na sincronização de cache entre pods Spring Boot? Padrão de produção: tópico compactado, consumer group por pod e gate de readiness."
 tech_icon: "fas fa-stream"
 faq:
   - question: "O Kafka pode substituir o Redis na sincronização de cache entre pods?"
@@ -39,7 +39,7 @@ sincronização de cache:
   já rodou isso de verdade — quais são os prós e contras?</p>
 </blockquote>
 
-Eu tenho experiência resolvendo essa classe de problema. A abordagem descrita aqui — um tópico Kafka
+Já resolvi esse tipo de problema na prática. A abordagem descrita aqui — um tópico Kafka
 compactado usado para materializar um cache local em cada pod — é um padrão comum e roda em sistemas
 de produção há anos. Ele não é um substituto universal para o Redis, mas é uma opção prática quando
 os seus trade-offs de consistência e operação se encaixam na carga de trabalho. Este artigo explica o
@@ -77,7 +77,7 @@ Schema.
 Nem o Kafka nem o Redis são imunes a falhas. Mas se o Kafka já é uma dependência, usá-lo para
 distribuir essa configuração pode evitar adicionar o Redis como mais uma dependência de runtime e
 mais um sistema para operar. Isso reduz o número de partes móveis e de modos de falha a considerar;
-não faz as falhas do Kafka desaparecerem. É um trade que vale a pena apenas quando a consistência
+não faz as falhas do Kafka desaparecerem. É uma troca que só vale a pena quando a consistência
 eventual é aceitável para os dados.
 
 O Kafka também pode desacoplar o serviço que publica a configuração dos serviços que a consomem.
@@ -111,7 +111,7 @@ próprios cenários de volume, rebalance, serialização, retry e indisponibilid
 - **Sim, com uma ressalva**: o Kafka substitui o Redis para *difundir* estado a todos os pods, não para
   ler de um único cache compartilhado. Cada pod recebe a sua própria cópia local, eventualmente consistente.
 - **Todo pod precisa do seu próprio consumer group do Kafka.** Pods que compartilham um grupo dividem as
-  partições (com balanceamento de carga); pods cada qual em seu próprio grupo recebem o tópico completo (broadcast).
+  partições (com balanceamento de carga); pods, cada um em seu próprio grupo, recebem o tópico completo (broadcast).
 - O tópico precisa estar **compactado**. Use mais de uma partição quando o replay de inicialização precisar
   de concorrência e torne o cache local **thread-safe** quando a concorrência do listener estiver habilitada.
 - Mantenha o dataset **pequeno e de volume relativamente baixo**. Esse padrão serve para feature flags, regras
@@ -185,7 +185,7 @@ O próximo requisito é garantir que todo pod receba esse estado.
 
 Um consumer group do Kafka tem uma visão independente de um tópico: dentro do grupo, cada partição é
 atribuída a um consumer. Portanto, pods que compartilham um grupo dividem o trabalho; pods em grupos
-separados consomem cada qual o tópico completo.
+separados consomem, cada um, o tópico completo.
 
 <figure class="post-figure">
   <img src="{{ '/assets/img/articles/kafka-consumer-groups.svg' | relative_url }}"
@@ -281,7 +281,7 @@ o replay terminar.
 > Não receba tráfego, não rode jobs agendados nem realize outro trabalho externo até a
 > configuração ter sido consumida.
 
-Essa é a parte fácil de pular e cara de pular. Um pod que se reporta "pronto" no instante em que as
+É fácil pular esta parte, e pular sai caro. Um pod que se reporta "pronto" no instante em que as
 partições lhe são atribuídas está pronto só no nome — pode ter reproduzido três registros de um total
 de três mil. Requisições batem em um cache quase vazio; um job agendado roda com defaults
 desatualizados; ninguém nota até alguém perguntar por que o pod 14 se comportou diferente por dois
@@ -409,10 +409,10 @@ marca a aplicação como saudável depois de o replay terminar. Isso espelha a v
 disponibilidade de uma plataforma de deploy; o estado de saúde do Compose em si não controla o
 roteamento de tráfego.
 
-Quarto, travar jobs agendados (ou qualquer outro método de bean) da mesma maneira, sem repetir a
-verificação `if (!tracker.isFullyConsumed()) return;` em cada ponto de chamada: uma segunda anotação,
-`@ReadinessGated`, mais o seu próprio pequeno aspecto que ignora a chamada por completo até o gate
-abrir — é com isso que o `CacheSnapshotJob.logSnapshot` acima está de fato anotado:
+Quarto, para travar jobs agendados (ou qualquer outro método de bean) da mesma maneira, sem repetir a
+verificação `if (!tracker.isFullyConsumed()) return;` em cada ponto de chamada, usa-se uma segunda
+anotação, `@ReadinessGated`, com o seu próprio aspecto, que ignora a chamada por completo até o gate
+abrir. É essa a anotação do `CacheSnapshotJob.logSnapshot`:
 
 ```java
 @Aspect
@@ -433,7 +433,7 @@ public class ReadinessGateAspect {
 }
 ```
 
-Mesma forma do aspecto `@ConfigConsumer` de antes, apontado na direção oposta: aquele *reporta*
+É o mesmo formato do aspecto `@ConfigConsumer` visto antes, só que no sentido oposto: aquele *reporta*
 atividade ao tracker, este *lê* e decide se deixa a chamada passar. Só faz sentido em métodos `void`
 — uma chamada pulada retorna `null` — que é exatamente o que um job `@Scheduled` é.
 
@@ -484,7 +484,7 @@ antes de escolher o padrão.
 Um grupo novo não tem offsets, então todo pod se reconstrói desde o começo. O custo, portanto, cresce
 com os registros ainda presentes no log compactado — não simplesmente com o número de chaves
 correntes, porque a compactação é assíncrona e segmentos antigos podem permanecer por um tempo. Meça
-o tempo de replay com dados parecidos com os de produção e dê ao `startupProbe` orçamento
+o tempo de replay com dados parecidos com os de produção e dê ao `startupProbe` tempo
 suficiente. O Kafka já busca registros em lotes, então ajuste o `max.poll.records` e mantenha o
 trabalho por registro barato. Para replays maiores, mude o listener para o modo em lote e aplique cada
 lista retornada em uma única invocação; o aspecto de rastreamento do exemplo suporta tanto argumentos
