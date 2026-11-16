@@ -366,6 +366,7 @@ optimizer = dspy.GEPA(
     auto="light",
     num_threads=4,
     track_stats=True,                    # fills detailed_results
+    perfect_score=1.25,                  # this metric's max; the default is 1.0
 )
 optimized = optimizer.compile(program, trainset=trainset, valset=valset)
 ```
@@ -377,6 +378,13 @@ endroit quand on optimise un modèle plus petit. Ensuite, activez `track_stats=T
 résultat embarque `detailed_results`, avec **chaque candidat, sa lignée parentale et les
 scores de validation par exemple**. C'est une piste d'audit de l'évolution du prompt, que
 vous pouvez exporter en JSON et relire comme une PR.
+
+Un piège sur lequel je suis réellement tombé : GEPA saute la réflexion sur tout exemple
+dont le score atteint `perfect_score`, qui **vaut 1.0 par défaut**. Notre métrique plafonne
+à 1.25 (cause racine 1.0 plus 0.25 pour la sévérité) ; avec la valeur par défaut, tout
+exemple à la bonne cause racine comptait donc comme parfait et GEPA ne regardait jamais les
+erreurs de sévérité. Il explorait un ou deux candidats et renvoyait le programme d'origine.
+Si le maximum de votre métrique n'est pas 1.0, réglez `perfect_score`.
 
 Ce que GEPA *modifie* est volontairement étroit : uniquement les `signature.instructions`
 de chaque prédicteur. La composition de vos modules, votre code, vos démos restent
@@ -447,19 +455,21 @@ uv sync                      # Python 3.11+, installs DSPy 3.5
 uv run python smoke_test.py  # no API key needed
 
 # Real runs:
-export OPENAI_API_KEY=sk-...     # or set DSPY_MODEL to any dspy.LM string
+export GEMINI_API_KEY=...     # free key: aistudio.google.com/apikey
+                              # or set DSPY_MODEL to any dspy.LM string
 uv run python 01_baseline.py         # score the unoptimized program
 uv run python 02_optimize_miprov2.py # Bayesian search → optimized/miprov2_triage.json
 uv run python 03_optimize_gepa.py    # reflective evolution → optimized/gepa_triage.json
 ```
 
-Par défaut : modèle de tâche `openai/gpt-4o-mini`, modèle de réflexion GEPA
-`openai/gpt-4o` (à surcharger avec `DSPY_MODEL` / `DSPY_REFLECTION_MODEL`). Le jeu de
-données compte 24 exemples, donc une exécution reste modeste ; consultez la page
-d'utilisation de votre fournisseur pour le coût réel. Je n'affiche volontairement aucun
-chiffre de précision ici : 10 exemples de validation, c'est une démo de câblage, pas un
-benchmark. Lancez les trois scripts et comparez les scores sur votre propre modèle avant
-de croire un optimiseur.
+Par défaut : modèle de tâche `gemini/gemini-3.5-flash-lite`, modèle de réflexion GEPA
+`gemini/gemini-3.5-flash` (à surcharger avec `DSPY_MODEL` / `DSPY_REFLECTION_MODEL` ;
+toute chaîne `dspy.LM` fonctionne, `openai/gpt-4o-mini` compris). Une clé Google AI Studio
+est gratuite, mais les quotas du palier gratuit sont faibles et Google les modifie :
+regardez les limites de votre projet avant de lancer les optimiseurs, qui font des
+centaines d'appels, et le code réessaie sur les 429 au lieu d'échouer. Le jeu de données
+compte 24 exemples, donc une exécution reste modeste. Ce qu'elle a produit quand je l'ai
+lancée se trouve dans la section suivante.
 
 Le moment qui vaut le coup d'être vécu : après chaque exécution, faites un diff du JSON
 sauvegardé avec le programme source. `02_optimize_miprov2.py` aura écrit des instructions
@@ -467,6 +477,58 @@ et injecté des démos few-shot. `03_optimize_gepa.py` aura réécrit l'instruct
 `optimized/gepa_results.json` contient toute la lignée évolutive : chaque candidat, ses
 parents, les scores par exemple. Ouvrez-le à côté du code source de votre programme et
 l'idée s'impose d'elle-même : **le prompt est un résultat, pas du code source.**
+
+## Ce qui s'est passé quand je l'ai exécuté
+
+J'ai lancé les trois scripts le 17 novembre 2026 sur le palier gratuit de Google AI
+Studio : `gemini-3.5-flash-lite` comme modèle de tâche, `gemini-3.5-flash` comme modèle
+de réflexion de GEPA, `auto="light"` pour les deux optimiseurs, `num_threads=4`. La
+métrique est celle à 1.25 point vue plus haut ; les scores ci-dessous sont des moyennes par
+incident sur les 10 incidents de validation.
+
+| Exécution | Score (max 1.25) | Remarques |
+|---|---|---|
+| Programme non optimisé, 3 exécutions sans cache | 1.10 / 1.12 / 1.10 | 88–90 % du max |
+| MIPROv2, `light` | 1.12 | dans le bruit d'une exécution à l'autre ci-dessus |
+| GEPA, `light`, `perfect_score` par défaut | 1.10 | 1–2 candidats, rien à apprendre (voir plus haut) |
+| GEPA, `light`, `perfect_score=1.25` | **1.175** (94 %) | 21 candidats, 420 appels à la métrique, ~18 min d'horloge |
+
+Lisez ces chiffres avec les réserves suivantes : ils sont petits, et je préfère que vous
+vous en méfiiez plutôt que de les citer.
+
+- **La baseline était déjà proche du plafond.** Le modèle a trouvé la bonne cause racine
+  sur les 10 incidents de validation. Chaque point perdu venait de la sévérité : il
+  sur-évalue en P1 là où le label dit P2 ou P3. C'est toute la marge qui existait, donc
+  l'expérience entière porte sur environ 2 labels de sévérité sur 10.
+- **GEPA choisit son gagnant sur les mêmes 10 exemples que ceux sur lesquels je le
+  rapporte**, donc 1.175 est optimiste. Il n'y a pas de jeu de test mis de côté. C'est une
+  démo de câblage, pas un benchmark.
+- **Le 1.12 de MIPROv2 n'est pas une victoire.** Le programme non optimisé a oscillé entre
+  1.10 et 1.12 d'une exécution à l'autre.
+- **DSPy met en cache sur disque les réponses du LM par défaut.** Mes premières « trois
+  exécutions identiques de la baseline » étaient trois hits de cache, pas une preuve de
+  stabilité. Le dépôt accepte désormais `DSPY_CACHE=0` pour le désactiver quand vous voulez
+  de la vraie variance.
+
+Le résultat le plus utile est venu de l'ouverture de `optimized/gepa_triage.json`, c'est-à-dire
+l'étape du diff de l'artefact recommandée plus haut. L'instruction évoluée ressemble à une
+antisèche étiquetée. Elle cite presque mot pour mot des incidents d'entraînement
+(`HikariPool - Connection is not available`, `management.server.port in use`, des
+placeholders `${...}` non résolus) et associe chacun à une sévérité. Elle liste aussi une
+cause racine, `management-port-conflict`, qui ne fait pas partie des six catégories
+autorisées, et sa liste de causes racines ne mentionne plus `thread-starvation`. Notre type
+`Literal` rejetterait le label inventé, et l'instruction éloigne désormais le modèle d'un
+label réel.
+Le score a progressé et l'artefact est pire, d'une façon que la métrique ne voit pas.
+C'est exactement pourquoi le JSON sauvegardé doit passer en revue de code, et pourquoi un
+jeu de test mis de côté et une métrique qui vérifie l'ensemble des catégories comptent
+plus que l'optimiseur que vous choisissez.
+
+Je n'ai tiré aucun verdict GEPA contre MIPROv2 de cette exécution, et une seule exécution
+sur 10 exemples ne le peut pas. Ce qu'elle soutient est plus étroit : sur une tâche que le
+modèle résout déjà en grande partie, vérifiez la baseline avant de payer pour
+l'optimisation, assurez-vous que l'étendue de votre métrique correspond aux hypothèses de
+l'optimiseur, et lisez le prompt évolué avant de croire son score.
 
 ## Quand ne pas utiliser DSPy ?
 

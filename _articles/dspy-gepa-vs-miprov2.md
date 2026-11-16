@@ -362,6 +362,7 @@ optimizer = dspy.GEPA(
     auto="light",
     num_threads=4,
     track_stats=True,                    # fills detailed_results
+    perfect_score=1.25,                  # this metric's max; the default is 1.0
 )
 optimized = optimizer.compile(program, trainset=trainset, valset=valset)
 ```
@@ -373,6 +374,13 @@ smaller one. Second, set `track_stats=True`: the
 result carries `detailed_results` with **every candidate, its parent
 lineage, and per-example validation scores** — an audit trail of how the
 prompt evolved, which you can export to JSON and review like a PR.
+
+One gotcha I hit for real: GEPA skips reflection on any example whose score
+reaches `perfect_score`, which **defaults to 1.0**. Our metric tops out at
+1.25 (root cause 1.0 plus 0.25 for severity), so with the default every
+example with the right root cause counted as perfect and GEPA never looked
+at the severity misses. It explored one or two candidates and returned the
+original program. If your metric's maximum is not 1.0, set `perfect_score`.
 
 What GEPA *changes* is deliberately narrow: only each predictor's
 `signature.instructions`. Your module composition, your code, your demos —
@@ -438,18 +446,20 @@ uv sync                      # Python 3.11+, installs DSPy 3.5
 uv run python smoke_test.py  # no API key needed
 
 # Real runs:
-export OPENAI_API_KEY=sk-...     # or set DSPY_MODEL to any dspy.LM string
+export GEMINI_API_KEY=...     # free key: aistudio.google.com/apikey
+                              # or set DSPY_MODEL to any dspy.LM string
 uv run python 01_baseline.py         # score the unoptimized program
 uv run python 02_optimize_miprov2.py # Bayesian search → optimized/miprov2_triage.json
 uv run python 03_optimize_gepa.py    # reflective evolution → optimized/gepa_triage.json
 ```
 
-Defaults: task model `openai/gpt-4o-mini`, GEPA reflection model
-`openai/gpt-4o` (override with `DSPY_MODEL` / `DSPY_REFLECTION_MODEL`). The
-dataset is 24 examples, so a run is small; check your provider's usage page
-for the actual cost. I deliberately don't print accuracy numbers here: 10
-validation examples is a wiring demo, not a benchmark. Run all three scripts
-and compare the scores on your own model before believing any optimizer.
+Defaults: task model `gemini/gemini-3.5-flash-lite`, GEPA reflection model
+`gemini/gemini-3.5-flash` (override with `DSPY_MODEL` /
+`DSPY_REFLECTION_MODEL`; any `dspy.LM` string works, `openai/gpt-4o-mini`
+included). A Google AI Studio key is free, but free-tier quotas are small and
+Google changes them, so look at your project's limits before the optimizer
+runs: they make hundreds of calls, and the code retries on 429s rather than
+failing. The dataset is 24 examples, so a run is small. What it produced when I ran it is in the next section.
 
 The moment worth doing yourself: after each run, diff the saved JSON against
 the source program. `02_optimize_miprov2.py` will have written instructions
@@ -457,6 +467,56 @@ and injected few-shot demos. `03_optimize_gepa.py` will have rewritten the
 instruction — and `optimized/gepa_results.json` holds the full evolutionary
 lineage: every candidate, its parents, per-example scores. Open it next to your program
 source and the point makes itself: **the prompt is output, not source.**
+
+## What Happened When I Ran It
+
+I ran all three scripts on 17 November 2026 on the Google AI Studio free tier:
+`gemini-3.5-flash-lite` as the task model, `gemini-3.5-flash` as GEPA's
+reflection model, `auto="light"` for both optimizers, `num_threads=4`. The
+metric is the 1.25-point one above; scores below are per-incident averages on
+the 10 validation incidents.
+
+| Run | Score (max 1.25) | Notes |
+|---|---|---|
+| Unoptimized program, 3 uncached runs | 1.10 / 1.12 / 1.10 | 88–90% of max |
+| MIPROv2, `light` | 1.12 | within the run-to-run noise above |
+| GEPA, `light`, default `perfect_score` | 1.10 | 1–2 candidates, nothing to learn from (see above) |
+| GEPA, `light`, `perfect_score=1.25` | **1.175** (94%) | 21 candidates, 420 metric calls, ~18 min wall clock |
+
+Read it with these caveats, because the numbers are small and I'd rather you
+distrust them than quote them:
+
+- **The baseline was already close to the ceiling.** The model got the root
+  cause right on all 10 validation incidents. Every point it lost was
+  severity: it over-called P1 where the label says P2 or P3. That is all the
+  headroom there was, so the whole experiment is about 2 severity labels out of 10.
+- **GEPA picks its winner on the same 10 examples I report it on**, so 1.175 is
+  optimistic. There is no held-out test set. It is a wiring demo, not a benchmark.
+- **MIPROv2's 1.12 is not a win.** The unoptimized program moved between 1.10
+  and 1.12 across reruns.
+- **DSPy caches LM responses on disk by default.** My first "three identical
+  baseline runs" were three cache hits, not evidence of stability. The repo
+  now takes `DSPY_CACHE=0` to disable it when you want real variance.
+
+The more useful result came from opening `optimized/gepa_triage.json`, which is
+the diff-the-artifact step recommended above. The evolved instruction reads
+like a labeled cheat sheet. It quotes training incidents nearly verbatim
+(`HikariPool - Connection is not available`, `management.server.port in use`,
+unresolved `${...}` placeholders) and maps each to a severity. It also lists
+a root cause, `management-port-conflict`, that is not one of the six allowed
+categories, and its list of root causes no longer mentions `thread-starvation`.
+Our `Literal` type would reject the invented label, and the instruction now
+steers the model away from a real one.
+The score improved and the artifact is worse in ways the metric
+cannot see. That is exactly why the saved JSON belongs in code review, and
+why a held-out test set and a metric that checks the category set matter
+more than the optimizer you pick.
+
+I did not produce a GEPA-vs-MIPROv2 verdict from this run, and one run on 10
+examples cannot. What it supports is narrower: on a task the model already
+mostly solves, check the baseline before paying for optimization, make sure
+your metric's range matches the optimizer's assumptions, and read the
+evolved prompt before trusting its score.
 
 ## When Should You Not Use DSPy?
 

@@ -347,6 +347,7 @@ optimizer = dspy.GEPA(
     auto="light",
     num_threads=4,
     track_stats=True,                    # fills detailed_results
+    perfect_score=1.25,                  # this metric's max; the default is 1.0
 )
 optimized = optimizer.compile(program, trainset=trainset, valset=valset)
 ```
@@ -357,6 +358,12 @@ recomenda um modelo maior ali quando se otimiza um modelo menor. Segundo, ative 
 resultado traz `detailed_results` com **todos os candidatos, a linhagem de pais de cada um e as
 pontuações de validação por exemplo**, uma trilha de auditoria de como o prompt evoluiu, que você pode
 exportar para JSON e revisar como um PR.
+
+Uma pegadinha que enfrentei de verdade: o GEPA pula a reflexão em qualquer exemplo cuja pontuação
+alcance `perfect_score`, que **por padrão vale 1.0**. A nossa métrica chega a no máximo 1.25 (1.0 pela
+causa raiz mais 0.25 pela severidade), então, com o padrão, todo exemplo com a causa raiz certa contava
+como perfeito e o GEPA nunca olhava para os erros de severidade. Ele explorou um ou dois candidatos e
+devolveu o programa original. Se o máximo da sua métrica não é 1.0, defina `perfect_score`.
 
 O que o GEPA *muda* é deliberadamente restrito: só o `signature.instructions` de cada predictor. A
 composição dos seus módulos, o seu código e as suas demos ficam intocados. As instruções otimizadas
@@ -419,24 +426,70 @@ uv sync                      # Python 3.11+, installs DSPy 3.5
 uv run python smoke_test.py  # no API key needed
 
 # Real runs:
-export OPENAI_API_KEY=sk-...     # or set DSPY_MODEL to any dspy.LM string
+export GEMINI_API_KEY=...     # free key: aistudio.google.com/apikey
+                              # or set DSPY_MODEL to any dspy.LM string
 uv run python 01_baseline.py         # score the unoptimized program
 uv run python 02_optimize_miprov2.py # Bayesian search → optimized/miprov2_triage.json
 uv run python 03_optimize_gepa.py    # reflective evolution → optimized/gepa_triage.json
 ```
 
-Padrões: modelo da tarefa `openai/gpt-4o-mini`, modelo de reflexão do GEPA `openai/gpt-4o` (sobrescreva
-com `DSPY_MODEL` / `DSPY_REFLECTION_MODEL`). O dataset tem 24 exemplos, então a execução é pequena;
-confira a página de uso do seu provedor para saber o custo real. Deliberadamente não publico números de
-acurácia aqui: 10 exemplos de validação servem para mostrar que a integração funciona, não são um
-benchmark. Rode os três scripts e compare as pontuações no seu próprio modelo antes de acreditar em
-qualquer otimizador.
+Padrões: modelo da tarefa `gemini/gemini-3.5-flash-lite`, modelo de reflexão do GEPA
+`gemini/gemini-3.5-flash` (sobrescreva com `DSPY_MODEL` / `DSPY_REFLECTION_MODEL`; qualquer string de
+`dspy.LM` funciona, inclusive `openai/gpt-4o-mini`). Uma chave do Google AI Studio é gratuita, mas as cotas
+do plano gratuito são pequenas e o Google as altera, então confira os limites do seu projeto antes de
+rodar o otimizador: ele faz centenas de chamadas, e o código tenta de novo em caso de 429 em vez de
+falhar. O dataset tem 24 exemplos, então a execução é pequena. O que ela produziu quando eu a rodei está
+na próxima seção.
 
 O que vale fazer por conta própria: depois de cada execução, compare com diff o JSON salvo e o
 programa-fonte. O `02_optimize_miprov2.py` terá escrito instruções e injetado demos few-shot. O
 `03_optimize_gepa.py` terá reescrito a instrução, e o `optimized/gepa_results.json` guarda a linhagem
 evolutiva completa: cada candidato, seus pais e as pontuações por exemplo. Abra esse arquivo ao lado do
 código-fonte do programa e a conclusão salta aos olhos: **o prompt é saída, não código-fonte.**
+
+## O Que Aconteceu Quando Eu Rodei
+
+Rodei os três scripts em 17 de novembro de 2026 no plano gratuito do Google AI Studio:
+`gemini-3.5-flash-lite` como modelo da tarefa, `gemini-3.5-flash` como modelo de reflexão do GEPA,
+`auto="light"` nos dois otimizadores, `num_threads=4`. A métrica é a de 1.25 ponto vista acima; as
+pontuações abaixo são médias por incidente nos 10 incidentes de validação.
+
+| Execução | Pontuação (máx. 1.25) | Notas |
+|---|---|---|
+| Programa não otimizado, 3 execuções sem cache | 1.10 / 1.12 / 1.10 | 88–90% do máximo |
+| MIPROv2, `light` | 1.12 | dentro do ruído entre execuções acima |
+| GEPA, `light`, `perfect_score` padrão | 1.10 | 1–2 candidatos, nada a aprender (veja acima) |
+| GEPA, `light`, `perfect_score=1.25` | **1.175** (94%) | 21 candidatos, 420 chamadas à métrica, ~18 min de relógio |
+
+Leia isso com estas ressalvas, porque os números são pequenos e prefiro que você desconfie deles a
+citá-los:
+
+- **O baseline já estava perto do teto.** O modelo acertou a causa raiz nos 10 incidentes de validação.
+  Todo ponto perdido foi de severidade: ele classificou como P1 onde o rótulo diz P2 ou P3. Essa era
+  toda a folga disponível, então o experimento inteiro gira em torno de 2 rótulos de severidade em 10.
+- **O GEPA escolhe o vencedor nos mesmos 10 exemplos em que reporto o resultado**, então 1.175 é
+  otimista. Não há conjunto de teste separado. É uma demo de integração, não um benchmark.
+- **O 1.12 do MIPROv2 não é uma vitória.** O programa não otimizado oscilou entre 1.10 e 1.12 entre
+  reexecuções.
+- **O DSPy faz cache das respostas do LM em disco por padrão.** Minhas primeiras "três execuções
+  idênticas do baseline" foram três acertos de cache, não evidência de estabilidade. O repositório agora
+  aceita `DSPY_CACHE=0` para desativá-lo quando você quiser variância real.
+
+O resultado mais útil veio de abrir o `optimized/gepa_triage.json`, que é o passo de comparar o artefato
+com diff recomendado acima. A instrução evoluída parece uma cola rotulada. Ela cita incidentes de
+treino quase literalmente (`HikariPool - Connection is not available`, `management.server.port in use`,
+placeholders `${...}` não resolvidos) e associa cada um a uma severidade. Também lista uma causa raiz,
+`management-port-conflict`, que não é uma das seis categorias permitidas, e a sua lista de causas raiz
+já não menciona `thread-starvation`. O nosso tipo `Literal` rejeitaria o rótulo inventado, e a instrução
+agora afasta o modelo de um rótulo real.
+A pontuação melhorou e o artefato ficou pior de maneiras que a métrica não enxerga. É exatamente por isso
+que o JSON salvo merece passar por code review, e por que um conjunto de teste separado e uma métrica que
+verifique o conjunto de categorias importam mais do que o otimizador que você escolhe.
+
+Não tirei um veredito GEPA vs MIPROv2 desta execução, e uma execução com 10 exemplos não consegue. O que
+ela sustenta é mais restrito: numa tarefa que o modelo já resolve na maior parte, confira o baseline antes
+de pagar por otimização, garanta que a faixa da sua métrica corresponda às premissas do otimizador e leia
+o prompt evoluído antes de confiar na pontuação dele.
 
 ## Quando Não Usar o DSPy?
 

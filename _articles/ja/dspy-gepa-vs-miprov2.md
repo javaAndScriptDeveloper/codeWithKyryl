@@ -330,6 +330,7 @@ optimizer = dspy.GEPA(
     auto="light",
     num_threads=4,
     track_stats=True,                    # fills detailed_results
+    perfect_score=1.25,                  # this metric's max; the default is 1.0
 )
 optimized = optimizer.compile(program, trainset=trainset, valset=valset)
 ```
@@ -340,6 +341,12 @@ optimized = optimizer.compile(program, trainset=trainset, valset=valset)
 `track_stats=True`を設定することです。結果の`detailed_results`には、**すべての候補、その親の系統、
 例ごとの検証スコア**が入ります。プロンプトがどう進化したかを示す監査証跡で、JSONにエクスポートして
 PRと同じようにレビューできます。
+
+実際にはまった落とし穴が1つあります。GEPAは、スコアが`perfect_score`に達した例ではリフレクションを
+行いません。この`perfect_score`は**デフォルトで1.0**です。私たちのメトリックの上限は1.25（根本原因の1.0に
+重大度の0.25を加えたもの）なので、デフォルトのままだと、根本原因が合っている例はすべて満点と見なされ、
+GEPAは重大度の取りこぼしを一度も見ませんでした。候補を1〜2個試しただけで、元のプログラムをそのまま
+返したのです。メトリックの最大値が1.0でない場合は、`perfect_score`を設定してください。
 
 GEPAが*変更する*対象は、意図的に狭く絞られています。各予測器の`signature.instructions`だけです。
 モジュールの構成も、コードも、デモも触りません。最適化された命令は、モデルをまたいでもかなりよく通用します。
@@ -399,24 +406,67 @@ uv sync                      # Python 3.11+, installs DSPy 3.5
 uv run python smoke_test.py  # no API key needed
 
 # Real runs:
-export OPENAI_API_KEY=sk-...     # or set DSPY_MODEL to any dspy.LM string
+export GEMINI_API_KEY=...     # free key: aistudio.google.com/apikey
+                              # or set DSPY_MODEL to any dspy.LM string
 uv run python 01_baseline.py         # score the unoptimized program
 uv run python 02_optimize_miprov2.py # Bayesian search → optimized/miprov2_triage.json
 uv run python 03_optimize_gepa.py    # reflective evolution → optimized/gepa_triage.json
 ```
 
-デフォルトでは、タスクモデルは`openai/gpt-4o-mini`、GEPAのリフレクションモデルは`openai/gpt-4o`です
-（`DSPY_MODEL` / `DSPY_REFLECTION_MODEL`で上書きできます）。データセットは24件なので実行は小規模です。
-実際のコストは、利用しているプロバイダーの使用量ページで確認してください。この記事では、精度の数値は
-あえて載せていません。検証用の10件は配線を確認するデモであって、ベンチマークではないからです。
-どのオプティマイザーが良いかは、3つのスクリプトをすべて実行し、自分のモデルでスコアを比べてから
-判断してください。
+デフォルトでは、タスクモデルは`gemini/gemini-3.5-flash-lite`、GEPAのリフレクションモデルは
+`gemini/gemini-3.5-flash`です（`DSPY_MODEL` / `DSPY_REFLECTION_MODEL`で上書きできます。`dspy.LM`の
+文字列ならどれでも使え、`openai/gpt-4o-mini`も含まれます）。Google AI Studioのキーは無料ですが、
+無料枠のクォータは小さく、Google側で変更されることもあります。オプティマイザーを走らせる前に、
+自分のプロジェクトの上限を確認してください。実行中は数百回の呼び出しが発生し、コードは429エラーでも
+失敗せずにリトライします。データセットは24件なので実行は小規模です。実行した結果は次のセクションにあります。
 
 ぜひ自分の手で確かめてほしいのは、各実行のあとに、保存されたJSONを元のプログラムとdiffすることです。
 `02_optimize_miprov2.py`は命令を書き込み、few-shotデモを注入しているはずです。`03_optimize_gepa.py`は
 命令を書き換えており、`optimized/gepa_results.json`には進化の系統がすべて残っています。すべての候補、
 その親、例ごとのスコアです。プログラムのソースと並べて開けば、要点は自然と伝わります。
 **プロンプトは出力であり、ソースではありません。**
+
+## 実際に動かしてみた結果
+
+3つのスクリプトをすべて、2026年11月17日にGoogle AI Studioの無料枠で実行しました。タスクモデルは
+`gemini-3.5-flash-lite`、GEPAのリフレクションモデルは`gemini-3.5-flash`、両オプティマイザーとも
+`auto="light"`、`num_threads=4`です。メトリックは前述の1.25点満点のもので、以下のスコアは検証用の
+10件のインシデントにおけるインシデントごとの平均です。
+
+| 実行 | スコア（満点1.25） | 備考 |
+|---|---|---|
+| 最適化なしのプログラム、キャッシュなしで3回 | 1.10 / 1.12 / 1.10 | 満点の88〜90% |
+| MIPROv2、`light` | 1.12 | 上記の実行ごとのばらつきの範囲内 |
+| GEPA、`light`、デフォルトの`perfect_score` | 1.10 | 候補は1〜2個で、学習するものがなかった（前述） |
+| GEPA、`light`、`perfect_score=1.25` | **1.175**（94%） | 候補21個、メトリック呼び出し420回、実時間で約18分 |
+
+数字が小さいので、引用されるよりも疑われるほうがよいと考えています。次の注意点を踏まえて読んでください。
+
+- **ベースラインはすでに上限に近かった。** モデルは検証用の10件すべてで根本原因を正しく当てました。
+  失点はすべて重大度によるもので、ラベルがP2やP3のところをP1と過大に判定していました。伸びしろは
+  それだけなので、この実験全体は、10件中およそ2件の重大度ラベルの話にすぎません。
+- **GEPAは、私が報告に使うのと同じ10件で勝者を選んでいる**ため、1.175は楽観的な値です。
+  ホールドアウトのテストセットはありません。これは配線を確認するデモであり、ベンチマークではありません。
+- **MIPROv2の1.12は勝ちではない。** 最適化なしのプログラムも、再実行のたびに1.10〜1.12の間で動きました。
+- **DSPyはデフォルトでLMの応答をディスクにキャッシュする。** 最初に行った「同一のベースライン3回」は、
+  安定性の証拠ではなく、3回のキャッシュヒットでした。本当のばらつきを見たいときのために、リポジトリは
+  `DSPY_CACHE=0`でキャッシュを無効にできるようになっています。
+
+より有益だったのは、`optimized/gepa_triage.json`を開いて確認したことです。これは、前述の
+「保存された成果物をdiffする」手順にあたります。進化した命令は、ラベル付きのカンニングペーパーのように
+読めます。訓練用のインシデントをほぼそのまま引用し（`HikariPool - Connection is not available`、
+`management.server.port in use`、未解決の`${...}`プレースホルダー）、それぞれに重大度を対応づけています。
+さらに、許可された6つのカテゴリーに含まれない根本原因`management-port-conflict`が挙げられており、
+根本原因の一覧からは`thread-starvation`が消えています。私たちの`Literal`型は、でっち上げられたラベルを
+拒否するでしょう。そして命令は、実在するラベルからモデルを遠ざけるようになっています。
+スコアは改善しましたが、成果物はメトリックには見えない形で悪化しています。保存されたJSONをコードレビューに
+かけるべき理由はまさにここにあり、どのオプティマイザーを選ぶかよりも、ホールドアウトのテストセットと、
+カテゴリーの集合を検査するメトリックのほうが重要な理由もここにあります。
+
+この実行からGEPAとMIPROv2の優劣を結論づけてはいませんし、10件での1回の実行では結論づけられません。
+言えるのはもっと限定的なことです。モデルがすでにおおむね解けているタスクでは、最適化にお金をかける前に
+ベースラインを確認すること、メトリックの値域がオプティマイザーの前提と合っていることを確かめること、
+そして進化したプロンプトを、そのスコアを信じる前に読むことです。
 
 ## DSPyを使うべきでないのはどんなとき
 

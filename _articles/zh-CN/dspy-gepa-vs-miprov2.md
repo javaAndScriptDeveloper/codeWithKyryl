@@ -327,6 +327,7 @@ optimizer = dspy.GEPA(
     auto="light",
     num_threads=4,
     track_stats=True,                    # fills detailed_results
+    perfect_score=1.25,                  # this metric's max; the default is 1.0
 )
 optimized = optimizer.compile(program, trainset=trainset, valset=valset)
 ```
@@ -335,6 +336,11 @@ optimized = optimizer.compile(program, trainset=trainset, valset=valset)
 模型更强的模型；DSPy 文档也建议，优化较小的模型时，反思环节用更大的模型。第二，设置
 `track_stats=True`：结果中的 `detailed_results` 包含**每个候选、它的父代谱系和逐样本验证得分**，
 这是一份提示词演化过程的审计记录，可以导出成 JSON，像评审 PR 一样检查。
+
+我亲身踩过一个坑：GEPA 会跳过得分达到 `perfect_score` 的样本，不对其做反思，而这个值**默认是 1.0**。
+我们的指标满分是 1.25（根因对得 1.0，严重等级对再加 0.25），所以用默认值时，凡是根因判对的样本都被
+当成满分，GEPA 从未看到那些严重等级判错的样本。它只探索了一两个候选，最后返回的还是原程序。如果你的
+指标满分不是 1.0，请设置 `perfect_score`。
 
 GEPA *改动*的范围刻意收得很窄：只有每个 predictor 的 `signature.instructions`。你的 module 组合、
 代码和 demo 都不会动。优化后的指令跨模型迁移的效果也相当不错：论文报告，在 Qwen3-8B 上进化出
@@ -391,21 +397,59 @@ uv sync                      # Python 3.11+, installs DSPy 3.5
 uv run python smoke_test.py  # no API key needed
 
 # Real runs:
-export OPENAI_API_KEY=sk-...     # or set DSPY_MODEL to any dspy.LM string
+export GEMINI_API_KEY=...     # free key: aistudio.google.com/apikey
+                              # or set DSPY_MODEL to any dspy.LM string
 uv run python 01_baseline.py         # score the unoptimized program
 uv run python 02_optimize_miprov2.py # Bayesian search → optimized/miprov2_triage.json
 uv run python 03_optimize_gepa.py    # reflective evolution → optimized/gepa_triage.json
 ```
 
-默认配置：任务模型为 `openai/gpt-4o-mini`，GEPA 反思模型为 `openai/gpt-4o`（可通过 `DSPY_MODEL` /
-`DSPY_REFLECTION_MODEL` 覆盖）。数据集只有 24 条样本，所以一次运行规模很小；实际花费请查看
-所用服务商的用量页面。我特意没有在这里贴准确率数字：10 条验证样本只能用来演示流程跑通，算不上
-基准测试。请在你自己的模型上把三个脚本都跑一遍、对比得分，再决定相信哪个 optimizer。
+默认配置：任务模型为 `gemini/gemini-3.5-flash-lite`，GEPA 反思模型为 `gemini/gemini-3.5-flash`（可通过
+`DSPY_MODEL` / `DSPY_REFLECTION_MODEL` 覆盖；任何 `dspy.LM` 字符串都可以用，包括 `openai/gpt-4o-mini`）。
+Google AI Studio 的 key 是免费的，但免费额度很小，而且 Google 会调整，所以在运行 optimizer 之前，请先
+查看你项目的额度限制：它们会发起数百次调用，代码遇到 429 会重试，而不是直接失败。数据集只有 24 条样本，
+所以一次运行规模很小。我实际运行的结果见下一节。
 
 最值得亲自动手的一步：每次运行结束后，把保存下来的 JSON 与源程序对比一下。`02_optimize_miprov2.py`
 会写入指令并注入 few-shot demo；`03_optimize_gepa.py` 则会重写指令，而 `optimized/gepa_results.json`
 保存着完整的进化谱系：每个候选、它的父代，以及逐样本得分。把它和你的程序源码并排打开，道理就
 一目了然：**提示词是输出，不是源码。**
+
+## 我实际运行的结果
+
+我在 2026 年 11 月 17 日用 Google AI Studio 免费额度跑了这三个脚本：任务模型为 `gemini-3.5-flash-lite`，
+GEPA 的反思模型为 `gemini-3.5-flash`，两个 optimizer 都用 `auto="light"`，`num_threads=4`。指标就是上面
+那个满分 1.25 的指标；下面的得分是 10 条验证故障上的单条平均值。
+
+| 运行 | 得分（满分 1.25） | 备注 |
+|---|---|---|
+| 未优化程序，3 次未命中缓存的运行 | 1.10 / 1.12 / 1.10 | 达到满分的 88–90% |
+| MIPROv2，`light` | 1.12 | 落在上面的运行间波动范围内 |
+| GEPA，`light`，默认 `perfect_score` | 1.10 | 1–2 个候选，无从学习（见上文） |
+| GEPA，`light`，`perfect_score=1.25` | **1.175**（94%） | 21 个候选，420 次指标调用，耗时约 18 分钟 |
+
+这些数字很小，我宁可你对它们保持怀疑，也不希望你直接引用，所以请带着下面几点来读：
+
+- **基线本来就已经接近上限。** 模型在全部 10 条验证故障上都判对了根因。它丢掉的每一分都在严重等级上：
+  标签是 P2 或 P3 的地方，它判成了 P1。可提升的空间仅此而已，所以整个实验其实只涉及 10 个样本里的
+  2 个严重等级标签。
+- **GEPA 挑选最优候选用的是我汇报得分的同一批 10 条样本**，所以 1.175 偏乐观。这里没有留出的测试集。
+  它只是流程演示，不是基准测试。
+- **MIPROv2 的 1.12 不算赢。** 未优化程序在多次重跑中本来就在 1.10 到 1.12 之间波动。
+- **DSPy 默认把 LM 响应缓存在磁盘上。** 我最初的「三次相同的基线运行」其实是三次缓存命中，并不能说明
+  稳定性。现在仓库支持用 `DSPY_CACHE=0` 关闭缓存，想看真实波动时可以用。
+
+更有价值的发现，来自打开 `optimized/gepa_triage.json`，也就是上文推荐的「对比产物」那一步。进化出的
+指令读起来像一份带标签的速查表。它几乎原样引用了训练集中的故障（`HikariPool - Connection is not available`、
+`management.server.port in use`、未解析的 `${...}` 占位符），并把每一条映射到一个严重等级。它还列出了
+一个不在六个允许类别之内的根因 `management-port-conflict`，而它的根因列表里已经不再提 `thread-starvation`。
+我们的 `Literal` 类型会拒绝这个凭空造出来的标签，而指令现在却在引导模型远离一个真实存在的类别。
+得分提高了，产物却在指标看不到的地方变差了。这正是保存下来的 JSON 应该进入代码评审的原因，也是为什么
+留出的测试集和一个会检查类别集合的指标，比你选哪个 optimizer 更重要。
+
+这次运行并没有得出 GEPA 与 MIPROv2 的优劣结论，在 10 条样本上跑一次也不可能得出。它能支持的结论要窄
+得多：对于模型本来就基本能解决的任务，在花钱做优化之前先看基线；确保你指标的取值范围符合 optimizer 的
+假设；在相信进化出的提示词的得分之前，先读一遍这份提示词。
 
 ## 什么时候不该用 DSPy？
 
