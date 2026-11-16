@@ -24,7 +24,7 @@ home:
   practice_note_cta: "Explorar la práctica en inglés"
   about_title: "Sobre mí"
   about_p1: "Soy <span class=\"about-highlight\">Kyryl</span>. Me dedico a construir <span class=\"about-highlight\">backends Java</span>: servicios Spring Boot que aguantan la carga y no me despiertan a las 3 de la madrugada."
-  about_p2: "Últimamente buena parte de mi tiempo va en <span class=\"about-highlight\">herramientas de IA</span>: <span class=\"about-highlight\">Claude</span> en el trabajo diario, <span class=\"about-highlight\">DSPy</span> para funcionalidades con LLM, Python cuando Java no es la herramienta adecuada. Escribo sobre lo que eso cambia en la práctica."
+  about_p2: "También comparto consejos sobre <span class=\"about-highlight\">desarrollo asistido por IA</span>: cómo uso las herramientas de IA en el trabajo diario de backend y qué ayuda de verdad."
   about_p3: "Ambos temas reciben aquí el mismo trato: código real de repositorios ejecutables, qué funcionó, qué no y qué haría de otra manera."
   contact_title: "Conectemos"
   contact_subtitle: "¿Tienes una pregunta, una idea de tema o simplemente quieres hablar de backend? Estoy a un mensaje de distancia."

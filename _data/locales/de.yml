@@ -24,7 +24,7 @@ home:
   practice_note_cta: "Practice auf Englisch entdecken"
   about_title: "Über mich"
   about_p1: "Ich bin <span class=\"about-highlight\">Kyryl</span>. Ich baue beruflich <span class=\"about-highlight\">Java-Backends</span>: Spring-Boot-Services, die unter Last durchhalten und mich nicht um 3 Uhr nachts wecken."
-  about_p2: "In letzter Zeit beschäftige ich mich viel mit <span class=\"about-highlight\">KI-Tooling</span>: <span class=\"about-highlight\">Claude</span> im Arbeitsalltag, <span class=\"about-highlight\">DSPy</span> für LLM-Features, Python, wo Java das falsche Werkzeug ist. Ich schreibe darüber, was sich dadurch tatsächlich ändert."
+  about_p2: "Außerdem teile ich Tipps zur <span class=\"about-highlight\">KI-gestützten Entwicklung</span>: wie ich KI-Tools im Backend-Alltag einsetze und was wirklich hilft."
   about_p3: "Beide Themen behandle ich hier gleich: echter Code aus lauffähigen Repos, was funktioniert hat, was nicht und was ich heute anders machen würde."
   contact_title: "Lass uns in Kontakt bleiben"
   contact_subtitle: "Du hast eine Frage, eine Themenidee oder willst einfach über Backends fachsimpeln? Eine Nachricht genügt."

@@ -23,7 +23,7 @@ home:
   practice_note_cta: "前往英文版练习"
   about_title: "关于"
   about_p1: "我是 <span class=\"about-highlight\">Kyryl</span>，本职是构建<span class=\"about-highlight\">Java 后端</span>：扛得住负载、不会在凌晨三点把我叫醒的 Spring Boot 服务。"
-  about_p2: "最近大量时间花在 <span class=\"about-highlight\">AI 工具</span>上：日常用 <span class=\"about-highlight\">Claude</span>、用 <span class=\"about-highlight\">DSPy</span> 做 LLM 功能、在 Java 不合适的地方用 Python。我在这里写的，就是这些工具究竟带来了哪些改变。"
+  about_p2: "我也会分享<span class=\"about-highlight\">AI 辅助开发</span>的经验：日常后端工作中怎么用 AI 工具，哪些做法真正有用。"
   about_p3: "两类话题我都用同一个标准来写：来自可运行仓库的真实代码，哪些做法有效、哪些没用，以及下次我会怎么改。"
   contact_title: "保持联系"
   contact_subtitle: "有问题、想提选题，或者只是想聊聊后端技术？一条消息就能找到我。"

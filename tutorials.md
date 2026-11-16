@@ -7,5 +7,5 @@ layout: tutorials
 lang: en
 lang_key: tutorials
 title: "Backend & AI Engineering Tutorials"
-description: "In-depth Java, Spring Boot, PostgreSQL, Kafka and microservices tutorials — plus AI-assisted development with DSPy, Claude and Python. Practical, production-focused engineering write-ups."
+description: "In-depth Java, Spring Boot, PostgreSQL, Kafka and microservices tutorials, plus tips on AI-assisted development. Practical, production-focused engineering write-ups."
 ---

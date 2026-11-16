@@ -22,7 +22,7 @@ title: CodeWithKyryl
 tagline: Backend & AI engineering deep dives for senior developers
 email: fkirill440@gmail.com
 description: >-
-  Java backend deep dives on Spring Boot, Kafka and PostgreSQL, plus running LLM tools in real engineering work: Claude, DSPy, Python, with runnable code.
+  Java backend deep dives on Spring Boot, Kafka and PostgreSQL, plus practical tips on AI-assisted development, with runnable code.
 baseurl: "" # the subpath of your site, e.g. /blog
 url: "https://codewithkyryl.dev" # the base hostname & protocol for your site
 linkedin_username: kyryl-feshchenko

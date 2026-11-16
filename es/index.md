@@ -8,5 +8,5 @@ lang: es
 lang_key: home
 permalink: /es/
 title: "CodeWithKyryl — Ingeniería backend explicada a fondo"
-description: "Análisis profundos de Java, Spring Boot, Kafka y PostgreSQL, y desarrollo con IA: DSPy, Claude y Python, con código ejecutable."
+description: "Análisis profundos de Java, Spring Boot, Kafka y PostgreSQL, y consejos de desarrollo asistido por IA, con código ejecutable."
 ---

@@ -4,5 +4,5 @@ lang: ja
 lang_key: home
 permalink: /ja/
 title: "CodeWithKyryl — 障害に強いバックエンドの実践知"
-description: "Java、Spring Boot、Kafka、PostgreSQL、AIエンジニアリングの実践的な深掘り。アウトボックスパターンやキャッシュ同期から、DSPy・Claudeを活用したAI支援開発まで、本番で使える知見を解説します。"
+description: "Java、Spring Boot、Kafka、PostgreSQLの実践的な深掘りと、AI支援開発のコツ。実際に動くコード付き。"
 ---

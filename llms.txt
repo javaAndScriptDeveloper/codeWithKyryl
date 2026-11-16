@@ -8,8 +8,8 @@ permalink: /llms.txt
 > {{ site.description | strip_newlines | strip }}
 
 Author: {{ site.author }} — backend engineer. Deep dives on Java, Spring Boot, Apache Kafka,
-PostgreSQL and distributed systems, plus what he learns running LLM tools in real work: Claude,
-DSPy, Python, and tool comparisons. Articles are hands-on and built around real working code.
+PostgreSQL and distributed systems, plus practical tips on AI-assisted development. Articles are
+hands-on and built around real working code.
 
 ## Articles
 {% assign sorted = "" | split: "" %}{% for a in site.articles %}{% if a.lang == "en" and a.shadow != true %}{% assign sorted = sorted | push: a %}{% endif %}{% endfor %}{% assign sorted = sorted | sort: "date" | reverse %}{% for post in sorted %}

@@ -23,7 +23,7 @@ home:
   practice_note_cta: "英語で演習を見る"
   about_title: "私について"
   about_p1: "私は<span class=\"about-highlight\">Kyryl</span>。<span class=\"about-highlight\">Javaバックエンド</span>が本業です。負荷に耐え、深夜3時に起こさないSpring Bootサービスを作っています。"
-  about_p2: "最近は<span class=\"about-highlight\">AIツール</span>にも多くの時間を割いています。日々のワークフローでの<span class=\"about-highlight\">Claude</span>、LLM機能のための<span class=\"about-highlight\">DSPy</span>、Javaが適さない場面でのPython。それが実際に何を変えるのかを書いています。"
+  about_p2: "<span class=\"about-highlight\">AI支援開発</span>のコツも共有しています。バックエンドの日常業務でAIツールをどう使い、何が本当に役立つかを書いています。"
   about_p3: "どちらのテーマも同じ扱いです。動くリポジトリの実際のコード、うまくいったこと、いかなかったこと、そして次にやるならどうするか。"
   contact_title: "つながりましょう"
   contact_subtitle: "ご質問でも、記事テーマの提案でも、ただバックエンド談義がしたいときでも。メッセージをいただければすぐに応じます。"
