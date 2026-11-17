@@ -44,6 +44,11 @@
 
     // An explicit language choice wins over locale auto-routing, forever.
     // locale-redirect.html reads this key and stands down when it's set.
+    // Landing directly on a localized page (bookmark, shared link) also counts as a
+    // choice when none is saved yet, so "/" keeps taking this visitor to that language.
+    {%- if page.lang and page.lang != "en" %}
+    try { if (!localStorage.getItem('cwk_lang_choice')) localStorage.setItem('cwk_lang_choice', '{{ page.lang }}'); } catch (err) {}
+    {%- endif %}
     document.addEventListener('click', function(e) {
         var a = e.target.closest ? e.target.closest('.lang-switcher__menu a[hreflang]') : null;
         if (a) {

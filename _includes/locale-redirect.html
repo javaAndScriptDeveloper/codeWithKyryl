@@ -2,9 +2,10 @@
   Auto-route first-time visitors on the English home (/) to their browser locale.
 
   Rules, in order:
-  1. An explicit language-switcher choice (localStorage, set by lang-switcher.html)
-     always wins — forever, across sessions.
-  2. Runs at most once per tab session (sessionStorage), including when the
+  1. A saved language choice (localStorage, set by lang-switcher.html on a switcher
+     click or on landing on a localized page) always wins and is applied on every
+     visit to "/" — forever, across sessions, new tabs and bookmarks.
+  2. Browser-language auto-routing (no saved choice) runs at most once per tab session (sessionStorage), including when the
      decision is "stay on English" — so reloads and in-site navigation never bounce.
   3. Never fires on reload or back/forward navigation (Navigation Timing type),
      so the browser back button is never fought.
@@ -45,10 +46,18 @@
   }
 
   try {
+    // Explicit choice wins, and is APPLIED (not just respected) on every visit to "/",
+    // so a new tab / bookmark of the root lands on the chosen language.
+    var choice = localStorage.getItem(CHOICE_KEY);
+    if (choice === "en") return;
+    if (choice && AVAILABLE.indexOf(choice) !== -1) {
+      window.location.replace("/" + choice + "/");
+      return;
+    }
+
+    // No (valid) choice: browser-language auto-routing, once per session.
     if (sessionStorage.getItem(DONE_KEY)) return;
     sessionStorage.setItem(DONE_KEY, "1");     // once per session — covers "stay" too
-
-    if (localStorage.getItem(CHOICE_KEY)) return; // explicit choice wins
 
     var nav = performance.getEntriesByType
       ? performance.getEntriesByType("navigation")[0] : null;
