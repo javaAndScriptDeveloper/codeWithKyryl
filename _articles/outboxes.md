@@ -452,16 +452,16 @@ reliability.
 stateDiagram-v2
     [*] --> PENDING: submit()
 
-    PENDING --> PROCESSING: worker claims task\n(TX1 commits)
+    PENDING --> PROCESSING: worker claims task<br/>(TX1 commits)
 
-    PROCESSING --> COMPLETED: generateReport() succeeds\n(TX2 commits)
-    PROCESSING --> FAILED: generateReport() throws\n(TX2 commits)
-    PROCESSING --> PENDING: app crash detected\nstuck-task recovery job resets
+    PROCESSING --> COMPLETED: generateReport() succeeds<br/>(TX2 commits)
+    PROCESSING --> FAILED: generateReport() throws<br/>(TX2 commits)
+    PROCESSING --> PENDING: app crash detected<br/>stuck-task recovery job resets
 
-    FAILED --> PROCESSING: retry eligible\n(retryCount ≤ MAX and executeAt ≤ now)
-    FAILED --> [*]: retryCount > MAX\n(dead — manual ops)
+    FAILED --> PROCESSING: retry eligible<br/>(retryCount ≤ MAX and executeAt ≤ now)
+    FAILED --> [*]: retryCount > MAX<br/>(dead — manual ops)
 
-    COMPLETED --> [*]: cleanup job removes\nafter retention period
+    COMPLETED --> [*]: cleanup job removes<br/>after retention period
 ```
 
 Outbox actions should not run under an open database transaction. The locked-transaction approach
@@ -808,7 +808,7 @@ flowchart TB
 
     subgraph after["✅ After — one table, handler per type"]
         direction TB
-        OT[(outbox_tasks\ntask_type column)] --> D[Dispatcher]
+        OT[(outbox_tasks<br/>task_type column)] --> D[Dispatcher]
         D --> H1[ReportHandler]
         D --> H2[EmailHandler]
         D --> H3[WebhookHandler]

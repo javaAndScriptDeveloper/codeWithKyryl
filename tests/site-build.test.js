@@ -29,3 +29,12 @@ test('hidden articles have no page and no link in the site', () => {
         .map((f) => path.relative(SITE, f));
     assert.deepEqual(offenders, []);
 });
+
+const OUTBOX = path.join(SITE, '2026', '06', '07', 'outboxes', 'index.html');
+
+test('posts load a pinned Mermaid with the hand-drawn look', () => {
+    const html = fs.readFileSync(OUTBOX, 'utf8');
+    assert.match(html, /cdn\.jsdelivr\.net\/npm\/mermaid@11\.17\.2\/dist\/mermaid\.min\.js/);
+    assert.match(html, /look:\s*'handDrawn'/);
+    assert.match(html, /fonts\.googleapis\.com\/css2\?family=Kalam/);
+});
