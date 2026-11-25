@@ -17,8 +17,10 @@ faq:
     answer: "Ні. Патерн outbox працює лише з реляційною базою даних. Запланований воркер може опитувати таблицю outbox безпосередньо через `SELECT ... FOR UPDATE SKIP LOCKED`. Брокер на кшталт Kafka — опція: можна публікувати події з outbox, але для надійного асинхронного виконання достатньо самого PostgreSQL."
   - question: "Як кілька воркерів уникають обробки того самого рядка outbox?"
     answer: "Використовуйте `SELECT ... FOR UPDATE SKIP LOCKED` при захопленні рядків. Кожен воркер блокує обрані рядки, а `SKIP LOCKED` змушує інших воркерів пропускати вже заблоковані рядки замість очікування, тож кілька інстансів можуть опитувати ту саму таблицю паралельно без подвійної обробки."
+  - question: "Чи можна надіслати повідомлення в Kafka або викликати API всередині методу з @Transactional?"
+    answer: "Не варто. Якщо Kafka чи віддалений сервіс гальмує, кожна транзакція лишається відкритою стільки, скільки триває виклик, утримуючи з’єднання з пулу та блокування рядків, — і деградація залежності перетворюється на аварію бази даних. Тривалість транзакції ніколи не повинна залежати від зовнішнього ресурсу. До того ж це все одно подвійний запис: повідомлення може піти, а транзакція — відкотитися. Запишіть намір у таблицю outbox у межах транзакції, а публікуйте вже після коміту з воркера."
   - question: "Як обробляти невдалі задачі та повторні спроби в outbox?"
-    answer: "Дайте кожній задачі машину станів (PENDING → PROCESSING → COMPLETED/FAILED), лічильник повторів і мітку часу `next_attempt_at` для експоненційної затримки. Heartbeat / lease-мітка дозволяє повернути задачі, покинуті впалим воркером, а граничний поріг повторів переводить отруйні повідомлення в стан dead-letter для ручного розбору."
+    answer: "Дайте кожній задачі машину станів (PENDING → PROCESSING → COMPLETED/FAILED), лічильник повторів і мітку часу `execute_at` для експоненційної затримки. Heartbeat / lease-мітка дозволяє повернути задачі, покинуті впалим воркером, а граничний поріг повторів переводить отруйні повідомлення в стан dead-letter для ручного розбору."
 ---
 
 # Патерн Transactional Outbox: від однієї задачі до асинхронного рушія продакшен-рівня
@@ -51,7 +53,9 @@ faq:
 
 - **Патерн Transactional Outbox** усуває проблему подвійного запису: рядок задачі пишеться в **ту саму транзакцію БД**, що й зміна домену, а виконує його фоновий воркер.
 - Опитуйте таблицю outbox через `SELECT ... FOR UPDATE SKIP LOCKED`, щоб кілька воркерів працювали паралельно без подвійної обробки.
-- Продакшен-рівень вимагає більшого за базову ідею: **машину станів**, **повтори з backoff**, **heartbeats/lease** для відновлення після падіння воркера, гарантії **порядку** та **моніторинг** глибини черги.
+- **Ніколи** не надсилайте повідомлення в Kafka і не викликайте інші сервіси всередині транзакції БД: час транзакції ніколи не повинен залежати від зовнішнього ресурсу.
+- Продакшен-рівень вимагає більшого за базову ідею: **машину станів**, **повтори з backoff і jitter**, **heartbeats/lease** для відновлення після падіння воркера, гарантії **порядку**, свідомо обрану **стратегію вибірки**, **пакетне очищення** та **моніторинг** глибини черги.
+- Для низької затримки будіть воркерів подією `AFTER_COMMIT` на **виділеному пулі потоків** — або переходьте на **zero-select** і передавайте payload прямо в події, поступаючись контролем над навантаженням заради швидкості.
 - Kafka не потрібна — **самого PostgreSQL** достатньо для надійного асинхронного виконання.
 </div>
 
@@ -323,6 +327,69 @@ sequenceDiagram
 фіксуйте вже після цього — окремою короткою транзакцією. Наступний розділ реалізує цей перехід
 станів і шлях відновлення.
 
+### Ніколи не звертайтеся до зовнішнього світу всередині транзакції
+
+Те саме правило діє далеко за межами outbox-воркера, і саме його порушення найчастіше, з того, що
+я бачив, кладе сервіс у коді довкола outbox. Виглядає це невинно:
+
+```java
+// ❌ Kafka send (or an HTTP call, or an S3 upload) inside an open DB transaction
+@Transactional
+public void approveOrder(UUID orderId) {
+    var order = orderRepository.findById(orderId).orElseThrow();
+    order.setStatus(OrderStatus.APPROVED);
+
+    kafkaTemplate.send("order-approved", orderId.toString(), toEvent(order)).get(); // blocks
+    billingClient.notifyApproved(orderId);                                         // blocks
+}
+```
+
+У хороший день Kafka підтверджує запис за 5 мс, а білінг відповідає за 30 мс, тож ніхто нічого
+не помічає. У поганий день брокер ребалансується або білінг деградував, і кожен виклик висить
+30 секунд, перш ніж відвалитися за таймаутом. Тепер **кожна** активна транзакція відкрита
+30 секунд:
+
+- кожна тримає з’єднання з пулу — з 20 з’єднаннями й 30-секундними викликами весь ваш сервіс
+  може підтвердити 20 замовлень за 30 секунд, а все інше (включно зі здоровими ендпоінтами на
+  читання) стоїть у черзі до пулу й починає падати за таймаутом;
+- щойно транзакція щось записала (у JPA це може статися лише під час flush на коміті, але часто
+  раніше), вона тримає блокування рядків — усе, що торкається тих самих замовлень, чекає за ними;
+- довга транзакція, яка вже щось записала, стримує горизонт vacuum у Postgres — мертві рядки по
+  всій базі не можна прибрати, доки вона не завершиться, тож bloat накопичується скрізь, а не
+  лише в цій таблиці.
+
+Деградація залежності, якою ви не володієте, щойно перетворилася на аварію бази даних, якою
+володієте ви. **Тривалість транзакції бази даних ніколи не повинна залежати від зовнішнього
+ресурсу.** Транзакція має чекати лише на саму базу даних.
+
+До того ж це все одно подвійний запис. Якщо надсилання в Kafka вдалося, а коміт потім упав
+(порушення обмеження, помилка серіалізації, под убили), консьюмери вже побачили подію
+`order-approved` для замовлення, яке так і не було підтверджене. Перенесення надсилання *після*
+коміту лише перевертає режим відмови: закомічено, але подію втрачено. Саме цю проблему й
+розв’язує outbox — запишіть намір в outbox у межах транзакції, а з Kafka нехай потім говорить
+воркер.
+
+Два запобіжники варто додати навіть тоді, коли код правильний, бо наступна людина, яка його
+чіпатиме, може не знати цього правила:
+
+```java
+@Transactional(timeout = 5) // seconds
+public void approveOrder(UUID orderId) { ... }
+```
+
+`timeout` у Spring не перериває виклик, який уже заблокований, — це дедлайн, який перевіряє
+наступна робота з базою. Будь-яка інструкція, виконана після дедлайну (включно з flush на
+коміті), падає з винятком таймауту, і транзакція відкочується. Сприймайте це як розтяжку, що
+перетворює «повільно й тихо» на «гучно падає в тестах і логах», а не як ліки.
+
+```sql
+-- server-side safety net: kill sessions that sit idle inside an open transaction
+ALTER DATABASE app SET idle_in_transaction_session_timeout = '30s';
+```
+
+`idle_in_transaction_session_timeout` — це рівно описана вище ситуація з погляду Postgres:
+сесія відкрила транзакцію, а потім замовкла, поки застосунок чекав на щось інше.
+
 ---
 
 ## Частина 2.5 — Зниження затримки за допомогою Application Events
@@ -398,7 +465,7 @@ public class ReportGenerationService {
 public record ReportGenerationTaskSubmittedEvent(UUID taskId) {}
 ```
 
-Лістенер реагує і негайно запускає обробку:
+Лістенер реагує після коміту, **на власному пулі потоків**:
 
 ```java
 @Component
@@ -407,6 +474,7 @@ public class ReportGenerationTaskEventListener {
 
     private final ReportGenerationTaskService taskService;
 
+    @Async("outboxExecutor")
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onTaskSubmitted(ReportGenerationTaskSubmittedEvent event) {
         taskService.fetchAndProcess();
@@ -414,37 +482,226 @@ public class ReportGenerationTaskEventListener {
 }
 ```
 
+Зверніть увагу: лістенер не передає `event.taskId()` далі. Це навмисно: подія — лише **сигнал
+пробудження**, а `fetchAndProcess()` забирає роботу так само, як і поллер, — найстаршу придатну
+задачу, зі `SKIP LOCKED`. Задача, яка породила подію, може й не бути тією, що виконається, зате
+логіка порядку та захоплення живе в одному місці. Якщо ж ви хочете виконати саме *цю* задачу
+просто зараз, передайте id і захопіть її напряму:
+
+```java
+taskService.process(event.taskId()); // WHERE id = :id AND state = 'PENDING' FOR UPDATE SKIP LOCKED
+```
+
+Так автор запиту отримує найменшу затримку — ціною того, що нові задачі обганяють старіші в
+`PENDING`. Для незалежної роботи це нормально, а от якщо ви покладаєтеся на FIFO (частина 7) —
+ні. Zero-select outbox наприкінці цієї частини доводить ідею до логічного завершення й передає
+весь payload.
+
+`@Async` тут не для краси. Лістенер `AFTER_COMMIT` без нього виконується **синхронно в потоці,
+який закомітив транзакцію**, — тобто в потоці HTTP-запиту. Відповідь «202 Accepted» тепер чекає,
+доки згенерується весь звіт. Гірше того, на цей момент ресурси закоміченої транзакції все ще
+прив’язані до потоку: документація Spring прямо попереджає, що доступ до даних з after-commit
+колбеку все ще «бере участь» у завершеній транзакції, і ніхто цю роботу не закомітить, якщо код
+явно не попросить `REQUIRES_NEW`. Перенесення лістенера в окремий потік виправляє обидві проблеми
+одразу.
+
+### Виділений пул потоків, а не стандартний
+
+`@Async` без імені використовує спільний `applicationTaskExecutor` зі Spring Boot — спільний з
+усіма іншими `@Async`-методами застосунку і, за замовчуванням, із фактично необмеженою чергою.
+Шквал подій тихо перетвориться на беклог у пам’яті, який зникне з наступним перезапуском. Дайте
+outbox власний обмежений пул:
+
+```java
+@Configuration
+@EnableAsync
+public class OutboxExecutorConfig {
+
+    @Bean("outboxExecutor")
+    public ThreadPoolTaskExecutor outboxExecutor() {
+        var executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(4);
+        executor.setMaxPoolSize(4);
+        executor.setQueueCapacity(200);                 // bounded: overflow is rejected, not buffered forever
+        executor.setThreadNamePrefix("outbox-");        // readable thread dumps and logs
+        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.DiscardPolicy());
+        executor.setWaitForTasksToCompleteOnShutdown(true);
+        executor.setAwaitTerminationSeconds(15);
+        return executor;
+    }
+}
+```
+
+Одна деталь Spring Boot, яку варто знати, перш ніж це копіювати: Boot автоконфігурує свій
+`applicationTaskExecutor` лише тоді, коли ви **не** оголосили власного біна `Executor`. Оголосіть
+`outboxExecutor` — і стандартний зникне: кожен *безіменний* `@Async` деінде в застосунку тихо
+опиниться на іншому екзекуторі (можливо, на цьому, з його discard-політикою). На Boot 3.5+
+виставте `spring.task.execution.mode=force`, щоб зберегти автоконфігурований; на старіших версіях
+явно оголосіть бін `applicationTaskExecutor` поруч із цим.
+
+Відкидати надлишок тут безпечно, *бо рядок уже в базі*: подія — лише оптимізація затримки, і
+поллер підбере все, що впустив шлях через події. Ніколи не використовуйте `CallerRunsPolicy` для
+цього пулу — «caller» тут саме той потік запиту, який ви намагалися звільнити.
+
 ### Класична помилка
 
 Найпоширеніша помилка тут — використання `@EventListener` замість
-`@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)`.
+`@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)`. Що саме піде не так,
+залежить від того, чи лістенер асинхронний:
 
-`@EventListener` спрацьовує в момент виклику `publishEvent()` — тобто **всередині відкритої
-транзакції**, до того, як `INSERT` закомітився. Лістенер викликає `fetchAndProcess()`, який
-шукає задачу в базі за ID. Рядка ще не існує. Задача мовчки пропускається, подія втрачається,
-і ви ламаєте голову, чому обробка так і не почалася — хоча планувальник через кілька секунд
-таки підхопить задачу, і в логах усе виглядає нормально.
+- **Звичайний `@EventListener`** спрацьовує в момент виклику `publishEvent()` — синхронно, у тому
+  самому потоці, **всередині ще відкритої транзакції**. `fetchAndProcess()` приєднується до цієї
+  транзакції, тож *бачить* незакомічений рядок — і тут же захоплює та виконує задачу. Звіт
+  генерується всередині транзакції submit (той самий антипатерн із частини 2), запит висить, доки
+  все не завершиться, а якщо транзакція submit потім відкотиться, ви виконали задачу, якої
+  офіційно ніколи не існувало.
+- **`@Async` + `@EventListener`** виконується в іншому потоці з іншим з’єднанням, ще до коміту.
+  Рядок поки невидимий, вибірка нічого не знаходить, і подія мовчки марнується. Планувальник
+  підхопить задачу за секунду, тож у логах усе виглядає нормально — ви просто непомітно втратили
+  виграш у затримці.
 
 ```java
-// ❌ fires inside the transaction — entity not visible to other connections yet
+// ❌ fires inside the open transaction (or before it commits, if @Async)
 @EventListener
 public void onTaskSubmitted(ReportGenerationTaskSubmittedEvent event) {
     taskService.fetchAndProcess();
 }
 
-// ✅ fires after COMMIT — entity is visible, fetch succeeds
+// ✅ fires after COMMIT, on the outbox pool — the row is visible and the caller is free
+@Async("outboxExecutor")
 @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 public void onTaskSubmitted(ReportGenerationTaskSubmittedEvent event) {
     taskService.fetchAndProcess();
 }
 ```
 
-`AFTER_COMMIT` гарантує, що лістенер виконається лише після повного коміту транзакції, яка
-опублікувала подію. На той момент рядок видимий усім з’єднанням, і вибірка його знайде.
-
 Планувальник залишається без змін — він слугує механізмом відновлення для задач, які лістенер
 подій пропустив. Два підходи доповнюють один одного: події — заради затримки, опитування —
 заради надійності.
+
+### Ще далі: zero-select outbox
+
+Подія вище все одно коштує одного походу в базу. Вона лише каже «з’явилося щось нове», тож
+воркеру доводиться робити `SELECT`, щоб дізнатися, що саме, — а з `ORDER BY created_at` він може
+навіть узяти не ту задачу, яка його розбудила. Коли затримка справді важлива, приберіть читання
+взагалі: **покладіть у подію все, що потрібно для виконання задачі**, виконайте її просто з
+пам’яті й запишіть назад лише результат.
+
+```mermaid
+sequenceDiagram
+    participant S as Service
+    participant DB as PostgreSQL
+    participant X as outboxExecutor
+
+    S->>DB: INSERT task (PROCESSING, heartbeat_at = now)
+    S->>DB: COMMIT
+    S-)X: event(taskId, payload) — AFTER_COMMIT
+    X->>X: generateReport(payload)
+    X->>DB: UPDATE state = COMPLETED WHERE id = ?
+    Note over DB,X: no SELECT anywhere on the happy path
+```
+
+Тут використовуються стан `PROCESSING` і heartbeat із частин 3 і 5. Рядок вставляється одразу в
+`PROCESSING`, зі свіжим `heartbeat_at`, який працює як lease. Саме ця деталь і забезпечує
+коректність: якби рядок вставлявся в `PENDING`, поллер міг би захопити його, поки шлях через
+подію вже виконує задачу, — і задача виконалася б двічі.
+
+```java
+public record ReportRequestedEvent(UUID taskId, Instant leasedAt, ReportGenerationPayload payload) {}
+
+@Transactional
+public void submit(ReportGenerationCommand command) {
+    var payload = ReportGenerationPayload.builder()
+            .from(command.getFrom())
+            .to(command.getTo())
+            .build();
+    var leasedAt = Instant.now().truncatedTo(ChronoUnit.MICROS); // Postgres stores microseconds
+    var entity = repository.save(ReportGenerationEntity.builder()
+            .state(TaskState.PROCESSING)
+            .heartbeatAt(leasedAt)        // lease: the poller leaves this row alone
+            .payload(payload)
+            .build());
+    eventPublisher.publishEvent(new ReportRequestedEvent(entity.getId(), leasedAt, payload));
+}
+```
+
+```java
+@Async("outboxExecutor")
+@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+public void onReportRequested(ReportRequestedEvent event) {
+    // UPDATE ... SET heartbeat_at = now()
+    //  WHERE id = :id AND state = 'PROCESSING' AND heartbeat_at = :leasedAt
+    if (repository.renewLease(event.taskId(), event.leasedAt()) == 0) {
+        return; // the event waited too long: recovery already handed the task to the poller
+    }
+    try (var heartbeat = heartbeatFactory.start(event.taskId())) {
+        generateReport(event.payload());
+        repository.markCompleted(event.taskId());              // UPDATE ... WHERE id = :id
+    } catch (Exception e) {
+        repository.markFailed(event.taskId(), e.getMessage()); // the poller retries it later
+    }
+}
+```
+
+Перевірка `renewLease` на початку важить більше, ніж здається. Lease виставляється під час
+вставки, але heartbeat стартує лише тоді, коли якийсь потік бере подію в роботу. Якщо подія
+простоїть у черзі екзекутора довше за поріг відновлення, задача відновлення скине рядок у
+`PENDING`, поллер його захопить — і тоді подія з черги виконала б задачу вдруге. Умовне оновлення
+перетворює цю гонку на no-op: той, хто більше не володіє початковим lease, відступає.
+
+Кожен сценарій збою повертає задачу на класичний шлях. Якщо лістенер кидає виняток, задача стає
+`FAILED`, і поллер повторить її з backoff. Якщо застосунок падає посеред виконання, heartbeat
+зупиняється, і задача відновлення застряглих задач її скидає. Якщо пул відхиляє подію, рядок
+лишається в `PROCESSING` з lease, який ніхто не оновлює, і чекає на відновлення — завдяки
+перевірці lease короткий поріг відновлення для таких рядків безпечний. (Повернути його одразу в
+`PENDING` при відхиленні можна лише знаючи id задачі, а обробник відхилень `@Async` його не
+отримує; якщо вам це потрібно, передавайте задачу в екзекутор самі й перехоплюйте
+`TaskRejectedException`.)
+
+**Компроміс: хто контролює обсяг роботи.** Outbox з опитуванням *тягне* (pull). Він сам вирішує,
+скільки задач узяти і як швидко, тож його навантаження обмежене за задумом, хоч би що відбувалося
+вище за течією. Zero-select outbox *штовхають* (push): робота надходить із тією швидкістю, з якою
+надходять запити. Сплеск трафіку стає сплеском виконання, і єдині гальма — розмір пулу та місткість
+черги; щойно вони заповнені, ви однаково відхиляєте й відкочуєтеся на опитування. Використовуйте
+zero-select для чутливої до затримки роботи помірного обсягу з обмеженим пулом; для всього
+іншого лишайте поллер — і завжди як страховку.
+
+**Вичавлюємо останній запис.** Для максимальної пропускної здатності можна піти ще на крок далі й
+перестати записувати кожне завершення окремо: збирати id завершених задач у пам’яті й скидати їх
+одним `UPDATE` раз на кілька сотень мілісекунд.
+
+```java
+@Component
+@RequiredArgsConstructor
+public class CompletionBuffer {
+
+    private final ConcurrentLinkedQueue<UUID> completed = new ConcurrentLinkedQueue<>();
+    private final ReportGenerationRepository repository;
+
+    public void add(UUID taskId) {
+        completed.add(taskId);
+    }
+
+    @Scheduled(fixedDelay = 200)
+    @PreDestroy                                   // flush what we can on a graceful shutdown
+    public void flush() {
+        var ids = new ArrayList<UUID>();
+        for (UUID id; ids.size() < 1_000 && (id = completed.poll()) != null; ) {
+            ids.add(id);
+        }
+        if (!ids.isEmpty()) {
+            repository.markCompleted(ids);        // UPDATE ... SET state = 'COMPLETED' WHERE id IN (:ids)
+        }
+    }
+}
+```
+
+Скидання під час зупинки — best effort: усе, що лишилося в буфері після нього або потрапило туди
+вже після знищення біна, просто виконається пізніше ще раз. Будьте точні щодо ціни. Падіння
+застосунку втрачає буфер — не задачі, а *запис про те, що вони завершилися*. Ці рядки лишаються в
+`PROCESSING`, відновлення їх скидає, і вони виконуються **знову**. Це прийнятно лише тоді, коли
+кожен обробник ідемпотентний (частина 10). Невдачі записуйте одразу, а не буферизуйте: вони
+рідкісні, а їхнє повідомлення про помилку — єдине, що ви потім не відновите.
 
 ---
 
@@ -454,16 +711,16 @@ public void onTaskSubmitted(ReportGenerationTaskSubmittedEvent event) {
 stateDiagram-v2
     [*] --> PENDING: submit()
 
-    PENDING --> PROCESSING: worker claims task\n(TX1 commits)
+    PENDING --> PROCESSING: worker claims task<br/>(TX1 commits)
 
-    PROCESSING --> COMPLETED: generateReport() succeeds\n(TX2 commits)
-    PROCESSING --> FAILED: generateReport() throws\n(TX2 commits)
-    PROCESSING --> PENDING: app crash detected\nstuck-task recovery job resets
+    PROCESSING --> COMPLETED: generateReport() succeeds<br/>(TX2 commits)
+    PROCESSING --> FAILED: generateReport() throws<br/>(TX2 commits)
+    PROCESSING --> PENDING: app crash detected<br/>stuck-task recovery job resets
 
-    FAILED --> PROCESSING: retry eligible\n(retryCount ≤ MAX and executeAt ≤ now)
-    FAILED --> [*]: retryCount > MAX\n(dead — manual ops)
+    FAILED --> PROCESSING: retry eligible<br/>(retryCount < MAX and executeAt ≤ now)
+    FAILED --> [*]: retryCount ≥ MAX<br/>(dead — manual ops)
 
-    COMPLETED --> [*]: cleanup job removes\nafter retention period
+    COMPLETED --> [*]: cleanup job removes<br/>after retention period
 ```
 
 Outbox-дії не повинні виконуватися під відкритою транзакцією БД. Підхід із транзакцією-блокуванням
@@ -568,7 +825,7 @@ public class ReportGenerationTaskService {
 @Query("""
     SELECT t FROM ReportGenerationEntity t
     WHERE t.state IN :states
-      AND t.retryCount <= :maxRetryCount
+      AND t.retryCount < :maxRetryCount
     ORDER BY t.createdAt ASC
     LIMIT 1
     """)
@@ -635,8 +892,41 @@ private void markFailed(ReportGenerationEntity task, Exception e) {
 }
 ```
 
-Планувальник працює з тією самою частотою. Він просто пропускає задачі, для яких вікно ще
-не відкрилося. Впалі задачі тихо чекають свого часу, а потім природно повертаються в чергу.
+Запит вибірки отримує одну додаткову умову — `AND t.executeAt <= :now`, — а планувальник працює
+з тією самою частотою. Він просто пропускає задачі, для яких вікно ще не відкрилося. Впалі задачі
+тихо чекають свого часу, а потім природно повертаються в чергу.
+
+### Jitter: згладжуйте навантаження, перш ніж воно вас накриє
+
+Фіксований графік затримок має неприємну властивість: задачі, що впали разом, разом і
+повторюються. Якщо email-провайдер лежав дві хвилини, усі 3 000 задач, що впали в цьому вікні,
+отримують `execute_at = failed_at + 1 minute` — і вдаряють по провайдеру знову однією
+синхронною хвилею, щойно він піднімається. Додайте до кожної затримки випадковість, щоб хвиля
+розтягнулася:
+
+```java
+private static Instant nextAttempt(Duration baseDelay) {
+    long jitterMillis = ThreadLocalRandom.current().nextLong(baseDelay.toMillis() / 2 + 1);
+    return Instant.now().plus(baseDelay).plusMillis(jitterMillis); // base + up to 50%
+}
+```
+
+Та сама ідея працює і на **вході**. Архітектурно асинхронний рушій хоче рівного, стабільного
+навантаження — а не великих раптових сплесків. Нічний імпорт, який створює 200 000 задач в одній
+транзакції, робить їх усі придатними до виконання в ту саму мілісекунду: кожен воркер на кожному
+поді насичується, залежна система отримує весь удар повністю, а дашборди затримки спалахують
+через роботу, на яку ніхто не чекав. Коли задача не термінова, давайте їй `execute_at` з jitter
+уже під час створення:
+
+```java
+// bulk / non-urgent submission: spread over the next 10 minutes instead of "all now"
+entity.setExecuteAt(Instant.now().plusMillis(
+        ThreadLocalRandom.current().nextLong(Duration.ofMinutes(10).toMillis())));
+```
+
+Загальний обсяг роботи не змінюється — він просто розподіляється в часі. Задачі, на які чекає
+користувач, зберігають `execute_at = now()`; пакетна робота отримує вікно jitter такого розміру,
+скільки вона може собі дозволити чекати.
 
 ---
 
@@ -731,7 +1021,7 @@ public class ReportGenerationTaskHeartbeat extends Heartbeat {
 ```java
 @Modifying
 @Transactional
-@Query("UPDATE ReportGenerationTaskEntity t SET t.heartbeatAt = :now WHERE t.id = :id")
+@Query("UPDATE ReportGenerationEntity t SET t.heartbeatAt = :now WHERE t.id = :id")
 void updateHeartbeatAt(@Param("id") UUID id, @Param("now") Instant now);
 ```
 
@@ -784,8 +1074,10 @@ public void fetchAndProcess() {
 @Query("UPDATE ReportGenerationEntity t SET t.heartbeatAt = :now WHERE t.id = :id")
 void updateHeartbeatAt(@Param("id") UUID id, @Param("now") Instant now);
 
-Optional<ReportGenerationEntity> findFirstByStateAndHeartbeatAtLessThan(
-        TaskState state, Instant threshold);
+@SkipLocked
+@Lock(LockModeType.PESSIMISTIC_WRITE)   // two recovery runs never reset the same task
+Optional<ReportGenerationEntity> findFirstByStateAndHeartbeatAtLessThanOrderByCreatedAt(
+        TaskState state, Instant heartbeatAt);
 ```
 
 `updated_at` відображає, коли стан задачі змінювався востаннє. `heartbeat_at` — чи жива задача
@@ -808,7 +1100,7 @@ flowchart TB
 
     subgraph after["✅ After — one table, handler per type"]
         direction TB
-        OT[(outbox_tasks\ntask_type column)] --> D[Dispatcher]
+        OT[(outbox_tasks<br/>task_type column)] --> D[Dispatcher]
         D --> H1[ReportHandler]
         D --> H2[EmailHandler]
         D --> H3[WebhookHandler]
@@ -940,7 +1232,7 @@ public class OutboxTaskService {
 @Query("""
     SELECT t FROM OutboxTaskEntity t
     WHERE t.state IN :states
-      AND t.retryCount <= :maxRetryCount
+      AND t.retryCount < :maxRetryCount
       AND t.executeAt <= :now
     ORDER BY t.createdAt ASC
     LIMIT 1
@@ -996,7 +1288,151 @@ private Long seq;
 
 `created_at` тримайте для спостережуваності. `seq` — для порядку.
 
+Одне застереження, яке боляче б’є тих, хто надто на це покладається: значення послідовності
+призначається під час `INSERT`, а не під час `COMMIT`. Транзакція A може взяти `seq = 100`,
+транзакція B — `seq = 101` і закомітитися першою, тож на якусь мить воркер бачить 101, але ще
+не бачить 100. `seq` дає стабільний порядок, незалежний від годинників; сам по собі він не
+гарантує «ніколи не обробляти 101 раніше за 100». Якщо для однієї сутності це жорстка вимога,
+обробляйте її задачі по одній (наприклад, пропускайте задачу, поки старіша задача з тим самим
+ключем ще в `PENDING` чи `PROCESSING`).
+
 Якщо строгий FIFO важливий у вашій системі — не забудьте про це.
+
+---
+
+## Частина 7.5 — Стратегії вибірки: коли опитувати і скільки брати
+
+Досі воркер був `@Scheduled(fixedDelay = 1000)`, який бере одну задачу за тик. Для демо це
+нормально, а в продакшені майже ніколи не те, що вам потрібно. Важливі два рішення: **що
+запускає прогін** і **скільки роботи бере один прогін**.
+
+### Що запускає прогін
+
+| Тригер | Spring | Поведінка | Для чого підходить |
+|---|---|---|---|
+| Fixed delay | `@Scheduled(fixedDelay = 1000)` | наступний прогін стартує через N мс *після завершення попереднього* | більшість outbox — враховує навантаження за задумом |
+| Fixed rate | `@Scheduled(fixedRate = 1000)` | прогони *плануються* кожні N мс, незалежно від того, скільки вони тривають | задачі зі сталою вартістю (метрики, heartbeats) |
+| Cron | `@Scheduled(cron = "0 */5 * * * *")` | за настінним годинником | очищення, звіти, усе, що прив’язане до «щоночі» |
+| Поріг | власний тригер | запуск, коли беклог ≥ N рядків або найстаршій задачі понад T | залежні системи, яким зручніше пакетами (bulk API) |
+
+Вибір між ними — не косметика. З `fixedRate` прогін, який триває довше за період, змінюється
+наступним **одразу**, тож повільна залежна система перетворює поллер «раз на секунду» на щільний
+цикл без жодного перепочинку. З `fixedDelay` повільний прогін просто відсуває наступний — воркер
+природно сповільнюється, коли системі важко.
+
+### Чи можуть два прогони перекриватися?
+
+У межах **одного** інстансу Spring зі стандартним планувальником той самий `@Scheduled`-метод не
+виконується паралельно сам із собою — навіть із `fixedRate` запізнілий прогін чекає, доки
+завершиться попередній. (Якщо ви ввімкнули віртуальні потоки, Boot використовує інший
+планувальник; перевірте це припущення за його документацією.) На цьому заспокоєнні багато хто й
+зупиняється — і це неправильне місце, щоб зупинятися. Прогони *таки* перекриваються, коли:
+
+- у вас **більше одного пода** — а це кожне продакшен-розгортання; N подів — це N паралельних
+  воркерів;
+- запланований метод позначений `@Async` або передає роботу в екзекутор і одразу повертається.
+
+Перекриття не страшне для будь-якої задачі, що **блокує рядки, з якими працює**, а при певній
+акуратності так можуть робити всі outbox-задачі:
+
+- **Вибірка й обробка** — саме для цього й існує `SKIP LOCKED`; воркери, що перекриваються,
+  просто ділять роботу ціною кількох зайвих запитів.
+- **Очищення** — два прогони очищення, що видаляють той самий діапазон, — це нормально, коли
+  пакетне видалення є native-запитом, внутрішній `SELECT` якого використовує
+  `FOR UPDATE SKIP LOCKED` (частина 9): кожен прогін бере рядки, яких не заблокував інший, і
+  ніхто не чекає.
+- **Відновлення застряглих задач** — два прогони відновлення могли б обидва скинути ту саму
+  задачу, тож запит відновлення теж має брати блокування рядка (`FOR UPDATE SKIP LOCKED`,
+  частина 5). Тоді кожен застряглий рядок дістається лише одному прогону.
+
+Для задачі, яку справді не можна зробити безпечною на рівні рядків, — скажімо, «надіслати
+щоденний підсумковий лист», — запускайте її лише на одному інстансі. Звичний інструмент для цього —
+**[ShedLock](https://github.com/lukas-krecan/ShedLock)**: невелика бібліотека, яка гарантує, що
+запланована задача виконується щонайбільше на одному вузлі одночасно. Перед прогоном вона бере
+іменоване блокування в спільному сховищі (таблиця у вашій же базі цілком підходить), а інші
+вузли пропускають цей прогін, поки блокування утримується. `lockAtMostFor` звільняє блокування,
+навіть якщо вузол, що його тримає, помер.
+
+```java
+@Scheduled(cron = "0 0 8 * * *")
+@SchedulerLock(name = "daily-summary", lockAtMostFor = "30m")
+public void sendDailySummary() { ... }
+```
+
+### Скільки бере один прогін: цикл вичерпування
+
+Одна задача за тик обмежує пропускну здатність однією задачею на секунду на под, хоч би яку
+потужність ви мали. Брати пакет — краще; ще краще — прогін, який **вибирає задачі, доки черга
+не спорожніє**, і лише тоді завершує свій тик:
+
+```mermaid
+flowchart TD
+    T([tick starts]) --> F[claim up to N tasks<br/>FOR UPDATE SKIP LOCKED]
+    F --> E{got any?}
+    E -- no --> D([tick ends<br/>wait fixedDelay])
+    E -- yes --> P[process batch]
+    P --> L{time budget<br/>left?}
+    L -- yes --> F
+    L -- no --> D
+```
+
+Коли черга порожня, тик коштує одного дешевого індексованого запиту. Коли накопичується беклог,
+воркер перестає чекати між пакетами й працює на повній швидкості, доки не наздожене. Бюджет часу
+важливий: без нього тик під сталим беклогом ніколи не завершується, а це сповільнює graceful
+shutdown і морить голодом будь-яку іншу задачу, що ділить потік планувальника.
+
+А такий потік зазвичай *справді* один: планувальник Spring Boot **за замовчуванням має один
+потік**. Поллер, відновлення застряглих задач, щогодинне очищення та будь-яка flush-задача
+стоять у черзі одне за одним, тож 20-хвилинний прогін очищення означає 20 хвилин без опитування
+на цьому поді. Дайте планувальнику достатньо потоків для ваших задач або винесіть довгі задачі
+в окремий планувальник:
+
+```yaml
+spring:
+  task:
+    scheduling:
+      pool:
+        size: 4
+```
+
+```java
+@Scheduled(fixedDelay = 1000)
+public void run() {
+    var deadline = Instant.now().plus(Duration.ofSeconds(30));
+    List<OutboxTaskEntity> batch;
+    do {
+        batch = repository.claimBatch(BATCH_SIZE, MAX_RETRY_COUNT);
+        batch.forEach(this::processClaimedTask);
+    } while (!batch.isEmpty() && Instant.now().isBefore(deadline));
+}
+```
+
+Захоплюйте пакет однією інструкцією — вибрати, заблокувати й позначити `PROCESSING` за один
+похід у базу:
+
+```java
+// no @Modifying: UPDATE ... RETURNING is read back like a SELECT
+@Transactional
+@Query(nativeQuery = true, value = """
+    UPDATE outbox_tasks
+       SET state = 'PROCESSING', heartbeat_at = now(), updated_at = now()
+     WHERE id IN (
+           SELECT id FROM outbox_tasks
+            WHERE state IN ('PENDING', 'FAILED')
+              AND retry_count < :maxRetryCount
+              AND execute_at <= now()
+            ORDER BY seq
+            LIMIT :batchSize
+              FOR UPDATE SKIP LOCKED)
+    RETURNING *
+    """)
+List<OutboxTaskEntity> claimBatch(@Param("batchSize") int batchSize,
+                                  @Param("maxRetryCount") int maxRetryCount);
+```
+
+Підбирайте розмір пакета так, щоб один пакет гарантовано вкладався у вікно heartbeat, і
+пам’ятайте, що `UPDATE ... RETURNING` не гарантує повернення рядків у порядку `seq` — якщо
+порядок важливий, відсортуйте список у пам’яті.
 
 ---
 
@@ -1017,7 +1453,7 @@ private Long seq;
 
 ```sql
 CREATE INDEX idx_outbox_fetch
-    ON outbox_tasks (created_at ASC)
+    ON outbox_tasks (seq ASC)
     WHERE state IN ('PENDING', 'FAILED');
 ```
 
@@ -1064,7 +1500,10 @@ CREATE INDEX idx_outbox_cleanup
 Правило: видаляйте лише задачі **`COMPLETED`**. Задачі `FAILED` — ваш аудит-слід. Не чіпайте їх.
 Обробляйте вручну або через окремий ops-процес, коли потрібно.
 
+Очевидна реалізація — один `DELETE` для всього, що старіше за вікно зберігання:
+
 ```java
+// ❌ fine on day one, dangerous on the day the job was broken for a week
 @Modifying
 @Transactional
 @Query("""
@@ -1078,19 +1517,73 @@ int deleteByStateInAndUpdatedAtBefore(
 );
 ```
 
+У PostgreSQL видалення великої кількості рядків **в одній транзакції** дороге в тих аспектах,
+які не видно в часі виконання запиту:
+
+- **Зростання WAL.** Кожен видалений рядок пишеться в журнал попереднього запису (часто з
+  full-page images). Десять мільйонів видалених рядків — це гігабайти WAL за лічені хвилини:
+  примусові checkpoints, тиск на диск primary, архівування й репліки відстають, поки
+  наздоганяють, а консьюмери логічної реплікації застрягають, декодуючи одну величезну транзакцію.
+- **Довгі блокування й старий знімок.** Одна гігантська транзакція тримає блокування на всіх
+  рядках, яких торкнулася, і не дає autovacuum прибрати будь-що новіше за її знімок — по всій
+  базі, весь час, поки вона виконується.
+- **Усе або нічого.** Якщо вона впаде через 20 хвилин, усе відкотиться, і наступний прогін
+  почне з нуля з іще більшою купою.
+
+Видаляйте **невеликими порціями, у циклі, кожну порцію — у власній короткій транзакції**. Я
+зазвичай працюю з порціями близько 100k рядків на транзакцію; підберіть розмір так, щоб один
+пакет займав секунду-дві на вашому залізі. Пакетування не зменшує загальний обсяг WAL — ті самі
+рядки видаляються в будь-якому разі, — воно розподіляє його в часі, тож checkpoints, архівування
+й репліки встигають, блокування короткі, а збій втрачає лише поточний пакет.
+
+```java
+@Modifying
+@Transactional
+@Query(nativeQuery = true, value = """
+    DELETE FROM outbox_tasks
+     WHERE id IN (
+           SELECT id FROM outbox_tasks
+            WHERE state = 'COMPLETED'
+              AND updated_at < :before
+            LIMIT :batchSize
+              FOR UPDATE SKIP LOCKED)       -- overlapping cleanup runs split the work
+    """)
+int deleteCompletedBatch(@Param("before") Instant before, @Param("batchSize") int batchSize);
+```
+
 ```java
 private static final int CLEANUP_RETENTION_DAYS = 30;
+private static final int CLEANUP_BATCH_SIZE = 100_000;
 
-@Transactional
-public void cleanup() {
+@Scheduled(cron = "0 0 * * * *")
+public void cleanup() {                       // deliberately NOT @Transactional
     var cutoff = Instant.now().minus(CLEANUP_RETENTION_DAYS, ChronoUnit.DAYS);
-    int deleted = repository.deleteByStateInAndUpdatedAtBefore(
-            List.of(TaskState.COMPLETED), cutoff);
-    log.info("Cleanup: removed {} completed tasks older than {} days", deleted, CLEANUP_RETENTION_DAYS);
+    var deadline = Instant.now().plus(Duration.ofMinutes(40)); // never run into the next hourly run
+    int total = 0;
+    int deleted;
+    do {
+        deleted = repository.deleteCompletedBatch(cutoff, CLEANUP_BATCH_SIZE); // own transaction
+        total += deleted;
+    } while (deleted == CLEANUP_BATCH_SIZE && Instant.now().isBefore(deadline));
+    log.info("Cleanup: removed {} completed tasks older than {} days", total, CLEANUP_RETENTION_DAYS);
 }
 ```
 
-Скільки зберігати: я бачив усе — від 1 дня до 3 місяців. Якщо не впевнені — зберігайте довше.
+Зовнішній метод **не** повинен бути `@Transactional` — інакше кожен пакет приєднається до однієї
+великої транзакції, і ви повернетеся до одного гігантського видалення, тільки з зайвими кроками.
+Частковий індекс `idx_outbox_cleanup` із частини 8 робить внутрішній `SELECT` кожного пакета
+дешевим.
+
+Outbox — ще й одна з таблиць із найвищою плинністю даних, якими ви будь-коли володітимете: кожен
+рядок вставляється, оновлюється два-три рази й видаляється. Кожна з цих операцій лишає по собі
+мертвий кортеж для autovacuum. Стандартні налаштування (vacuum, коли мертві ~20% таблиці)
+розраховані на таблиці, які здебільшого ростуть, тож на завантаженому outbox вони дозволяють
+bloat накопичуватися між прогонами. Зробіть autovacuum агресивнішим саме для цієї таблиці —
+Postgres дозволяє перевизначати налаштування autovacuum для окремої таблиці через
+`ALTER TABLE ... SET (...)`, тож решта бази зберігає стандартні значення.
+
+Скільки зберігати: я бачив усе — від видалення задачі одразу після обробки до зберігання протягом
+місяця після неї. Якщо не впевнені — зберігайте довше.
 Ціна зберігання старих рядків — трохи більша таблиця. Ціна передчасного видалення — втрата
 історії для дебагу саме того дня, коли вона потрібна найбільше.
 
@@ -1144,10 +1637,14 @@ public class ReportGenerationHandler implements OutboxTaskHandler<ReportGenerati
 
         var reportPath = runReportGeneration(payload);
 
-        reports.save(GeneratedReport.builder()
-                .idempotencyKey(taskId)
-                .reportPath(reportPath)
-                .build());
+        try {
+            reports.saveAndFlush(GeneratedReport.builder()
+                    .idempotencyKey(taskId)
+                    .reportPath(reportPath)
+                    .build());
+        } catch (DataIntegrityViolationException e) { // saveAndFlush: surface it here, not at commit
+            log.info("Task {} was completed concurrently — treating as done", taskId);
+        }
     }
 }
 ```
@@ -1166,11 +1663,12 @@ Outbox працює мовчки у фоні. Коли все працює, ні
 не помічає, принаймні одразу. Застряглі задачі накопичуються. Залежні сервіси перестають
 отримувати події. Коли хтось нарешті зазирне в логи, мине вже дві години.
 
-Три сигнали повністю покривають простір відмов — за моделлю Google SRE:
+Чотири «золоті сигнали» з книги Google SRE лягають на outbox майже один в один:
 
 - **Latency** — скільки часу проходить від взяття задачі до її завершення? Спайк тут означає, що обробник повільний або БД під тиском.
 - **Throughput** — скільки задач завершується за одиницю часу? Падіння до нуля означає, що планувальник не працює або задачі ніхто не забирає.
 - **Error rate** — яка частка спроб завершується невдачею? Понад ~5% — залежна система деградувала, і черга повторів росте.
+- **Saturation** — скільки роботи чекає? Глибина черги, а ще корисніше — **вік найстаршої придатної задачі**: беклог у 10 000 задач віком 3 секунди — це здоров’я, беклог із 3 задач віком 40 хвилин — ні.
 
 <img src="{{ site.baseurl }}/assets/img/outbox-grafana-dashboard.png" alt="Grafana-дашборд outbox" style="max-width: 100%; height: auto; border-radius: 8px; border: 1px solid #e5e7eb;">
 
@@ -1229,6 +1727,12 @@ public class OutboxMetrics {
 Далі сервіс просто викликає `metrics.recordCompleted()` і `metrics.recordFailed()` — без сирих
 рядків у бізнес-логіці.
 
+Одна пастка в цьому gauge: рядки `FAILED`, які вичерпали повтори, ніколи не видаляються (це
+аудит-слід), тож підрахунок усіх рядків `FAILED` змушує «pending» рости вічно, і алерт на беклог
+зрештою горить постійно. Рахуйте лише рядки, які ще можуть виконатися (`retry_count < max`), а
+вичерпані виведіть в окремий gauge `outbox.tasks.dead` — це число має бути нулем, і щоразу, коли
+воно не нуль, хтось має подивитися.
+
 Після старту `curl localhost:8080/actuator/prometheus | grep outbox` дає вам:
 
 ```
@@ -1257,17 +1761,113 @@ outbox_tasks_pending 0.0
 
 ---
 
+## Частина 12 — Життя з outbox: деплої та зміни payload
+
+Дві речі стануться з кожним outbox у перший же місяць у продакшені, і жодна з них не проявляється
+в демо.
+
+### Graceful shutdown
+
+Кожен деплой вбиває поди, які саме виконують задачі. Без належної уваги кожна така задача
+лишається в `PROCESSING`, доки її не помітить задача відновлення застряглих задач — через годину,
+з порогом із частини 5, — і тоді виконується знову з початку. У команді, яка деплоїть десять разів
+на день, це постійний струмочок годинних затримок і дубльованих виконань.
+
+Потрібна така послідовність зупинки:
+
+1. **Перестаньте брати нову роботу.** Зупиніть планувальник і забороніть екзекутору подій
+   приймати задачі.
+2. **Дайте поточним задачам завершитися** — до дедлайну, що вкладається в
+   `terminationGracePeriodSeconds` Kubernetes (за замовчуванням 30 с — збільште, якщо вашим задачам
+   треба більше).
+3. **Поверніть те, що не встигло завершитися.** Усе, що ще виконується на момент дедлайну,
+   переведіть назад у `PENDING` (один `UPDATE` за id), щоб інший под підхопив це за секунду, а не за
+   годину.
+
+Більшу частину цього Spring Boot дає через конфігурацію:
+
+```yaml
+# Kubernetes: terminationGracePeriodSeconds: 60
+server:
+  shutdown: graceful
+spring:
+  lifecycle:
+    timeout-per-shutdown-phase: 15s
+  task:
+    scheduling:
+      shutdown:
+        await-termination: true
+        await-termination-period: 15s
+```
+
+…плюс `setWaitForTasksToCompleteOnShutdown(true)` і 15-секундне очікування на `outboxExecutor` із
+частини 2.5. Ці очікування здебільшого йдуть одне за одним, а не паралельно, тож **складайте їх**:
+15 + 15 + 15 = 45 секунд мають вкластися в grace period, інакше под уб’ють посеред зупинки, і він
+залишить саме ті рядки `PROCESSING`, яких ви намагалися уникнути. Цикл вичерпування з частини 7.5
+теж має перевіряти прапорець «зупиняємося» між пакетами, щоб под із беклогом перестав захоплювати
+нові пакети, щойно йому скажуть зупинитися.
+
+### Версіонування payload
+
+Payload живуть у таблиці хвилини, години або — для задачі `FAILED`, що чекає на повтор, — дні.
+Отже, **код, який читає payload, часто новіший за код, який його записав**. Перейменуйте поле в
+`ReportGenerationPayload`, задеплойте — і кожна задача, створена попередньою версією, не
+десеріалізується.
+
+Важливо, де саме вона падає. Якщо payload змаплений як типізована JSON-колонка
+(`@JdbcTypeCode(SqlTypes.JSON)` із частини 1), Hibernate десеріалізує його **під час завантаження
+ентиті — всередині запиту захоплення**. Транзакція захоплення відкочується, `retry_count` ніколи
+не зростає, і той самий отруйний рядок падає знову на кожному тику. З `LIMIT 1` — або в кожному
+пакеті, що його містить, — він зупиняє outbox для всіх. Багатотиповий диспетчер із частини 6
+безпечніший: він зберігає payload як сирий JSON і десеріалізує його вже на шляху обробника, тож
+поганий payload стає звичайною задачею `FAILED`.
+
+Ставтеся до payload як до контракту з самим собою з минулого:
+
+- Робіть зміни адитивними: додавайте нові поля як необов’язкові й не перейменовуйте та не
+  видаляйте поле, доки в `PENDING` чи `FAILED` ще може лишатися хоч один рядок старої форми.
+- Робіть читача толерантним — `@JsonIgnoreProperties(ignoreUnknown = true)` на класі payload, —
+  щоб після відкату релізу ще можна було прочитати рядки, записані новішою версією. (Налаштування
+  `spring.jackson.deserialization.fail-on-unknown-properties` недостатньо: JSON-мапінг Hibernate
+  використовує власний mapper, якщо ви не налаштуєте `hibernate.type.json_format_mapper`.)
+- Для справді несумісної зміни додайте колонку `payload_version` (або новий тип задач) і
+  тримайте старий обробник, доки старі рядки не зникнуть.
+
+```sql
+ALTER TABLE outbox_tasks ADD COLUMN payload_version SMALLINT NOT NULL DEFAULT 1;
+```
+
+<div class="post-sticky" markdown="1">
+<p class="post-sticky-title">📌 З досвіду: payload в Avro</p>
+
+На одному проєкті наші outbox-payload були в Avro, а невдалі потрапляли в dead-letter таблицю.
+Зберігати їх як сирі байти разом зі схемою записувача — рішення, ухвалене поспіхом, під тиском, —
+але воно спрацювало, і пізніше ми їх таки переграли. І все ж я б так більше не робив: звичайний JSON
+з адитивними змінами — набагато простіше.
+</div>
+
+---
+
 ## Продакшен-чекліст
 
 Перед випуском будь-якого outbox у продакшен:
 
 ```
+☐ Жодних надсилань у Kafka, HTTP-викликів чи іншого зовнішнього I/O всередині транзакції БД
+☐ Timeout транзакції та idle_in_transaction_session_timeout налаштовані як запобіжники
+☐ Тригер вибірки обрано свідомо — за замовчуванням fixedDelay; кожна задача блокує рядки, яких торкається (SKIP LOCKED)
+☐ Пакетне захоплення / цикл вичерпування з бюджетом часу, а не одна задача за тик
 ☐ Індекси ефективні — часткові індекси на станах PENDING/FAILED та PROCESSING
 ☐ EXPLAIN ANALYZE підтверджує використання індексу запитом вибірки
 ☐ Порядок не є проблемою — ORDER BY seq або created_at, підкріплений індексом
-☐ Задача очищення оброблених даних працює, рядки COMPLETED видаляються після періоду зберігання
+☐ Лістенери подій — AFTER_COMMIT і @Async на виділеному обмеженому екзекуторі
+☐ Експоненційна затримка з jitter підключена — або підтверджено, що для цього кейсу вона не потрібна
+☐ Масові створення задач розподілені через execute_at з jitter
+☐ Очищення видаляє рядки COMPLETED пакетами, кожен у власній транзакції
+☐ Autovacuum налаштований для таблиці outbox
 ☐ Ідемпотентність оброблена всередині обробників із побічними ефектами
-☐ Експоненційна затримка підключена — або підтверджено, що для цього кейсу вона не потрібна
+☐ Graceful shutdown повертає незавершені задачі, а не залишає їх у PROCESSING
+☐ Зміни payload зворотно сумісні (або версіоновані)
 ☐ Метрики на місці — глибина черги, пропускна здатність, частка помилок, затримка
 ☐ Алерти налаштовані — backlog, частка помилок, затримка, застряглі задачі
 ```
@@ -1296,10 +1896,35 @@ outbox’и, db-scheduler — моя референсна реалізація: 
 
 ---
 
+**[JobRunr](https://www.jobrunr.io/)** — фонові задачі для Java з мінімумом церемоній: ви ставите
+в чергу лямбду (`BackgroundJob.enqueue(() -> reportService.generate(from, to))`), а JobRunr
+серіалізує виклик, зберігає його у вашій базі й виконує на будь-якому інстансі — з повторами та
+backoff, періодичними (cron) задачами й веб-дашбордом із коробки. Це та сама категорія, що й
+db-scheduler, але з дружнішим API та багатшим вбудованим інструментарієм; частина можливостей
+(пакети задач, черги з пріоритетами, rate limiting) доступна лише в платній Pro-версії. Одне, що
+варто перевірити, перш ніж використовувати його як *outbox*: уся ця стаття спирається на гарантію,
+що задача зберігається в **тій самій транзакції**, що й бізнес-зміна. Перевірте, як ваша версія
+JobRunr і ваш storage provider поводяться всередині методу з `@Transactional`, перш ніж на це
+покладатися.
+
+---
+
 **[Celery](https://docs.celeryq.dev/)** — стандарт де-факто для асинхронного виконання задач
 в екосистемі Python. Celery підтримує PostgreSQL як result backend і Redis або RabbitMQ як
 брокер. Патерн `AFTER_COMMIT` із частини 2.5 застосовується і тут — штовхайте задачу в Celery
 лише після коміту транзакції, а не всередині неї.
+
+---
+
+**[Debezium](https://debezium.io/documentation/reference/stable/transformations/outbox-event-router.html)**
+— інша відповідь на ту саму проблему, яку варто знати, коли outbox існує лише для того, щоб
+публікувати події в Kafka. Замість воркера, що опитує таблицю, Debezium читає журнал попереднього
+запису бази (change data capture) і публікує кожен вставлений рядок outbox у Kafka; його outbox
+event router перетворює рядок на повідомлення з правильним ключем. Немає ні затримки опитування,
+ні навантаження від опитування на таблицю. Ціна — експлуатація Kafka Connect і слота реплікації,
+а слот, який перестали споживати, змушує Postgres зберігати WAL вічно, тож його треба окремо
+моніторити. До того ж це покриває лише «опублікувати подію»: для «згенерувати звіт» чи «викликати
+цей API з повторами» вам усе одно потрібен рушій виконання задач, який будує ця стаття.
 
 ---
 
@@ -1308,6 +1933,18 @@ outbox’и, db-scheduler — моя референсна реалізація: 
 cron-вирази, тригери, job stores. Операційні витрати вищі, ніж у db-scheduler, а API за сучасними
 мірками багатослівний, але вона доведена до масштабу й має першокласну інтеграцію зі Spring
 через `spring-boot-starter-quartz`.
+
+---
+
+**[Spring Batch](https://spring.io/projects/spring-batch)** — його часто згадують на одному
+диханні з рештою, але він розв’язує іншу задачу. Усе вище (db-scheduler, JobRunr, Quartz, outbox
+із цієї статті) виконує **багато дрібних незалежних задач**: один лист, один вебхук, один запит на
+звіт. Spring Batch виконує **одну велику задачу над великим набором даних**: прочитати мільйони
+рядків, обробити їх порціями (chunks), записати результати, комітячи після кожної порції, і —
+якщо впаде на рядку 3 200 000 — перезапуститися з останньої закоміченої порції, а не з нуля. Його
+job repository фіксує кожен запуск і крок саме для цього. Він не ставить роботу в чергу й не
+реагує на події — щось має запустити job. Разом вони добре поєднуються: у нашому сценарії
+outbox-задача може бути «запустити місячний звіт», а сам звіт — job у Spring Batch.
 
 ---
 

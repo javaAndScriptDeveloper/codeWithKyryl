@@ -18,7 +18,7 @@ faq:
   - question: "Can I send a Kafka message or call an API inside a @Transactional method?"
     answer: "You shouldn't. If Kafka or the remote service is slow, every transaction stays open for as long as the call takes, holding a pooled connection and row locks, so a degraded dependency turns into a database outage. Transaction duration must never depend on an external resource. It is also still a dual write: the message can be sent and the transaction then roll back. Write the intent to an outbox table in the transaction and publish after commit from a worker."
   - question: "How do you handle failed tasks and retries in an outbox?"
-    answer: "Give each task a state machine (PENDING → PROCESSING → COMPLETED/FAILED), a retry counter, and a `next_attempt_at` timestamp for exponential backoff. A heartbeat / lease timestamp lets you reclaim tasks orphaned by a crashed worker, and a max-retry threshold moves poison messages to a dead-letter state for manual inspection."
+    answer: "Give each task a state machine (PENDING → PROCESSING → COMPLETED/FAILED), a retry counter, and a `execute_at` timestamp for exponential backoff. A heartbeat / lease timestamp lets you reclaim tasks orphaned by a crashed worker, and a max-retry threshold moves poison messages to a dead-letter state for manual inspection."
 ---
 
 # The Transactional Outbox Pattern: From a Single Task to a Production-Grade Async Engine
@@ -1069,8 +1069,8 @@ void updateHeartbeatAt(@Param("id") UUID id, @Param("now") Instant now);
 
 @SkipLocked
 @Lock(LockModeType.PESSIMISTIC_WRITE)   // two recovery runs never reset the same task
-Optional<ReportGenerationEntity> findFirstByStateAndHeartbeatAtLessThan(
-        TaskState state, Instant threshold);
+Optional<ReportGenerationEntity> findFirstByStateAndHeartbeatAtLessThanOrderByCreatedAt(
+        TaskState state, Instant heartbeatAt);
 ```
 
 `updated_at` reflects when the task state last changed. `heartbeat_at` reflects whether the
@@ -1440,7 +1440,7 @@ Index for the fetch query:
 
 ```sql
 CREATE INDEX idx_outbox_fetch
-    ON outbox_tasks (created_at ASC)
+    ON outbox_tasks (seq ASC)
     WHERE state IN ('PENDING', 'FAILED');
 ```
 

@@ -7,7 +7,7 @@ title: "Transactional Outbox 事务发件箱模式实战：从单个任务到生
 date: 2026-06-07
 tags: [pattern, postgres, spring-boot, java]
 excerpt: "如何在 PostgreSQL 和 Spring Boot 之上构建可靠的异步任务执行引擎——从最基础的单类型发件箱，一路演进到带重试、心跳、顺序保证和生产监控的多类型调度器。"
-description: "Transactional Outbox 事务发件箱模式实战指南：基于 Java、Spring Boot 与 PostgreSQL 解决微服务双写问题，用 SELECT FOR UPDATE SKIP LOCKED 实现并发安全的异步任务执行，覆盖重试退避、心跳恢复、顺序保证、幂等与监控告警。"
+description: "Transactional Outbox 事务发件箱模式实战指南：基于 Java、Spring Boot 与 PostgreSQL 解决双写问题，实现可靠的异步任务执行。"
 og_image:
   header:
     font_family: "Noto Sans CJK SC, Noto Sans CJK, DejaVu Sans, Bold"
@@ -28,8 +28,10 @@ faq:
     answer: "不需要。发件箱模式仅凭关系型数据库就能工作。定时 worker 可以用 `SELECT ... FOR UPDATE SKIP LOCKED` 直接轮询发件箱表。Kafka 这类 broker 是可选的——你可以从发件箱对外发布事件，但仅靠 PostgreSQL 就足以支撑可靠的异步执行。"
   - question: "多个 worker 如何避免处理同一条发件箱记录？"
     answer: "认领任务时使用 `SELECT ... FOR UPDATE SKIP LOCKED`。每个 worker 锁定自己选中的行，而 `SKIP LOCKED` 让其他 worker 跳过已被锁定的行而不是阻塞等待，因此多个实例可以并发轮询同一张表而不会重复处理。"
+  - question: "可以在 @Transactional 方法里发 Kafka 消息或调用 API 吗？"
+    answer: "不应该。一旦 Kafka 或远端服务变慢，每个事务都会在调用期间一直开着，占住一条连接池连接和若干行锁，于是一个劣化的依赖就演变成一次数据库故障。事务时长绝不能取决于外部资源。而且这仍然是双写：消息可能已经发出，事务却随后回滚。正确做法是在事务里把意图写进发件箱表，提交之后再由 worker 去发布。"
   - question: "发件箱里的失败任务和重试怎么处理？"
-    answer: "给每个任务一个状态机（PENDING → PROCESSING → COMPLETED/FAILED）、一个重试计数器，以及用于指数退避的 `next_attempt_at` 时间戳。心跳/租约时间戳用于回收被崩溃 worker 孤立的任务；超过最大重试阈值的毒消息进入死信状态，等待人工排查。"
+    answer: "给每个任务一个状态机（PENDING → PROCESSING → COMPLETED/FAILED）、一个重试计数器，以及用于指数退避的 `execute_at` 时间戳。心跳/租约时间戳用于回收被崩溃 worker 孤立的任务；超过最大重试阈值的毒消息进入死信状态，等待人工排查。"
 ---
 
 # Transactional Outbox 事务发件箱模式实战：从单个任务到生产级异步任务引擎
@@ -58,7 +60,9 @@ faq:
 
 - **Transactional Outbox 模式**通过在**同一个数据库事务**中写入任务行、再由后台 worker 执行的方式，解决双写问题。
 - 用 `SELECT ... FOR UPDATE SKIP LOCKED` 轮询发件箱表，多个 worker 即可并发运行而不会重复处理。
-- 生产级实现需要的不止基础思路：**状态机**、**带退避的重试**、恢复崩溃 worker 的**心跳/租约**、**顺序**保证，以及对队列深度的**监控**。
+- **绝不要**在数据库事务里发 Kafka 消息或调用其他服务：事务时长绝不能取决于外部资源。
+- 生产级实现需要的不止基础思路：**状态机**、**带退避与抖动（jitter）的重试**、恢复崩溃 worker 的**心跳/租约**、**顺序**保证、经过斟酌的**抓取策略**、**分批清理**，以及对队列深度的**监控**。
+- 想要低延迟，就用 `AFTER_COMMIT` 事件在**专用线程池**上唤醒 worker——或者走**零查询（zero-select）**路线，直接在事件里携带载荷，用对负载的控制权换取速度。
 - 你不需要 Kafka——**仅靠 PostgreSQL** 就足以支撑可靠的异步执行。
 </div>
 
@@ -252,7 +256,7 @@ public interface ReportGenerationRepository extends JpaRepository<ReportGenerati
 }
 ```
 
-提示值 `-2` 就是 Hibernate 翻译成 `SKIP LOCKED` 子句的来源。由于没有一等公民的注解可用，
+`SKIP_LOCKED` 的提示值 `-2` 就是 Hibernate 翻译成 `SKIP LOCKED` 子句的来源。由于没有一等公民的注解可用，
 值得把它抽成一个可复用的注解，免得这个魔法数字散落在各个 repository 里：
 
 ```java
@@ -320,6 +324,61 @@ sequenceDiagram
 正确的做法是：在一个短事务里把行置为 `PROCESSING` 完成认领，提交并释放锁，然后再执行
 发件箱动作；之后再在另一个短事务里记录 `COMPLETED` 或 `FAILED`。下一节会实现这个状态
 流转及其恢复路径。
+
+### 永远不要在事务里与外部世界通信
+
+同样的规则远不止适用于发件箱 worker。在我见过的案例里，这是发件箱周边代码把整个服务
+拖垮的最常见方式。它看上去人畜无害：
+
+```java
+// ❌ Kafka send (or an HTTP call, or an S3 upload) inside an open DB transaction
+@Transactional
+public void approveOrder(UUID orderId) {
+    var order = orderRepository.findById(orderId).orElseThrow();
+    order.setStatus(OrderStatus.APPROVED);
+
+    kafkaTemplate.send("order-approved", orderId.toString(), toEvent(order)).get(); // blocks
+    billingClient.notifyApproved(orderId);                                         // blocks
+}
+```
+
+日子好的时候，Kafka 5ms 就 ack，计费服务 30ms 就响应，没人察觉任何异常。日子不好的时候，
+broker 在做 rebalance，或者计费服务已经劣化，每次调用都要卡 30 秒才超时。于是**每一个**
+进行中的事务都要开 30 秒：
+
+- 每个事务都占着一条连接池连接——20 条连接、每次调用 30 秒，你的整个服务每 30 秒只能
+  审批 20 个订单，其余一切（包括本来健康的读接口）都在排队等连接，然后开始超时；
+- 一旦它写过数据（在 JPA 里可能要到提交时 flush 才真正写，但通常更早），它就持有行锁——
+  任何碰到这些订单的操作都得排在后面等；
+- 一个写过数据的长事务会拖住 Postgres 的 vacuum 水位线——在它结束之前，整个数据库里的
+  死元组都无法被清理，于是膨胀会在各处累积，而不只是这一张表。
+
+一个不归你管的依赖发生劣化，就这样变成了你自己的数据库的一次故障。**数据库事务的时长
+绝不能取决于外部资源。** 事务只应该等待数据库本身。
+
+而且这仍然是双写。如果 Kafka 发送成功了，而提交随后失败（约束冲突、序列化失败、pod 被杀），
+消费者早已看到一个 `order-approved` 事件，而这个订单其实从未被审批。把发送挪到提交*之后*
+只是把故障模式翻了个面：提交成功了，事件却丢了。这正是发件箱要解决的问题——在事务里把
+意图写进发件箱，再让 worker 事后去和 Kafka 打交道。
+
+即使代码已经写对了，也值得加两道防护，因为下一个改这段代码的人未必知道这条规则：
+
+```java
+@Transactional(timeout = 5) // seconds
+public void approveOrder(UUID orderId) { ... }
+```
+
+Spring 的 `timeout` 不会打断一个已经阻塞住的调用——它是一个截止时间，由之后的数据库操作
+去检查。截止时间过后发出的任何语句（包括提交时的 flush）都会抛出超时异常，事务回滚。
+把它当作一根绊线：把「又慢又悄无声息」变成「在测试和日志里大声失败」，而不是当作解药。
+
+```sql
+-- server-side safety net: kill sessions that sit idle inside an open transaction
+ALTER DATABASE app SET idle_in_transaction_session_timeout = '30s';
+```
+
+从 Postgres 的视角看，`idle_in_transaction_session_timeout` 描述的正是上面那种情况：
+会话开启了一个事务，然后在应用等待别的东西时一声不吭。
 
 ---
 
@@ -393,7 +452,7 @@ public class ReportGenerationService {
 public record ReportGenerationTaskSubmittedEvent(UUID taskId) {}
 ```
 
-监听器接收事件并立即触发处理：
+监听器在提交之后、**在它自己的线程池上**做出响应：
 
 ```java
 @Component
@@ -402,6 +461,7 @@ public class ReportGenerationTaskEventListener {
 
     private final ReportGenerationTaskService taskService;
 
+    @Async("outboxExecutor")
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onTaskSubmitted(ReportGenerationTaskSubmittedEvent event) {
         taskService.fetchAndProcess();
@@ -409,35 +469,208 @@ public class ReportGenerationTaskEventListener {
 }
 ```
 
+注意，监听器并没有把 `event.taskId()` 往下传。这是刻意的：事件只是一个**唤醒信号**，
+`fetchAndProcess()` 认领任务的方式和轮询器完全一样——取最旧的合格任务，并带上
+`SKIP LOCKED`。触发事件的那个任务未必就是被执行的那个，但排序和认领逻辑只存在于一处。
+如果你更希望*立刻*执行*那个*任务，就把 id 传下去并直接认领它：
+
+```java
+taskService.process(event.taskId()); // WHERE id = :id AND state = 'PENDING' FOR UPDATE SKIP LOCKED
+```
+
+这样提交者能获得最低的延迟，代价是新任务可以插队到更早的 `PENDING` 任务前面——对相互
+独立的工作来说没问题，但如果你依赖 FIFO（第七部分）就是错的。本部分末尾的零查询发件箱
+把这个思路推到极致：直接传整份载荷。
+
+`@Async` 不是摆设。没有它的 `AFTER_COMMIT` 监听器会**在执行提交的那个线程上同步运行**——
+也就是 HTTP 请求线程。用户拿到的「202 Accepted」现在要等整份报表生成完才返回。更糟的是，
+此时已提交事务的资源仍然绑定在这个线程上：Spring 自己的文档就警告过，在 after-commit
+回调里做数据访问，仍然会「参与」那个已经结束的事务，除非代码显式要求 `REQUIRES_NEW`，
+否则没有任何东西会去提交它。把监听器挪到单独的线程上，两个问题一次解决。
+
+### 用专用线程池，而不是默认那个
+
+不带名字的 `@Async` 使用 Spring Boot 共享的 `applicationTaskExecutor`——它与应用里所有其他
+`@Async` 方法共用，并且默认情况下队列实际上是无界的。一波事件洪峰会悄无声息地变成内存里
+的积压，下次重启时就凭空消失。给发件箱一个它自己的、有界的线程池：
+
+```java
+@Configuration
+@EnableAsync
+public class OutboxExecutorConfig {
+
+    @Bean("outboxExecutor")
+    public ThreadPoolTaskExecutor outboxExecutor() {
+        var executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(4);
+        executor.setMaxPoolSize(4);
+        executor.setQueueCapacity(200);                 // bounded: overflow is rejected, not buffered forever
+        executor.setThreadNamePrefix("outbox-");        // readable thread dumps and logs
+        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.DiscardPolicy());
+        executor.setWaitForTasksToCompleteOnShutdown(true);
+        executor.setAwaitTerminationSeconds(15);
+        return executor;
+    }
+}
+```
+
+照抄之前有一个 Spring Boot 细节要知道：只有在你**没有**自己声明任何 `Executor` bean 时，
+Boot 才会自动配置 `applicationTaskExecutor`。一旦声明了 `outboxExecutor`，默认的那个就消失了——
+应用里其他地方所有*不带名字*的 `@Async` 都会悄悄落到另一个 executor 上（很可能就是这个，
+连同它的丢弃策略）。在 Boot 3.5+ 上，设置 `spring.task.execution.mode=force` 来保留自动配置的
+那个；更早的版本上，在它旁边显式声明一个 `applicationTaskExecutor` bean。
+
+溢出时直接丢弃在这里是安全的，*因为那一行已经在数据库里了*：事件只是一个延迟优化，
+事件路径丢掉的任何东西，轮询器都会捡起来。这个线程池绝不要用 `CallerRunsPolicy`——
+所谓的「caller」正是你想要解放出来的那个请求线程。
+
 ### 最经典的错误
 
 这里最常见的错误是用 `@EventListener` 而不是
-`@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)`。
+`@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)`。会出什么问题，取决于
+监听器是不是异步的：
 
-`@EventListener` 在 `publishEvent()` 被调用的那一刻就触发——此时还处于**未提交的事务内**，
-`INSERT` 尚未提交。监听器调用 `fetchAndProcess()`，按 ID 去数据库里查这个任务。行还不存在。
-任务被静默跳过，事件丢失，而你还在纳闷为什么处理一直没启动——几秒之后调度器把它捞了起来，
-日志里看起来一切正常。
+- **普通的 `@EventListener`** 在 `publishEvent()` 被调用的那一刻就触发——同步执行，在同一个
+  线程上，**处于仍未提交的事务之内**。`fetchAndProcess()` 加入这个事务，所以它*确实*能看到
+  那条未提交的行——并且当场认领、执行了这个任务。报表在提交请求的事务里生成（正是第二部分
+  里的那个反模式），请求一直挂着直到生成结束；而如果提交请求的事务随后回滚了，你就执行了
+  一个名义上从未存在过的任务。
+- **`@Async` + `@EventListener`** 在另一个线程、用另一条连接、在提交之前运行。行还不可见，
+  抓取什么也找不到，事件被悄无声息地浪费掉。一秒之后调度器把任务捞了起来，所以日志看起来
+  一切正常——你只是在不知不觉中失去了延迟上的好处。
 
 ```java
-// ❌ fires inside the transaction — entity not visible to other connections yet
+// ❌ fires inside the open transaction (or before it commits, if @Async)
 @EventListener
 public void onTaskSubmitted(ReportGenerationTaskSubmittedEvent event) {
     taskService.fetchAndProcess();
 }
 
-// ✅ fires after COMMIT — entity is visible, fetch succeeds
+// ✅ fires after COMMIT, on the outbox pool — the row is visible and the caller is free
+@Async("outboxExecutor")
 @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 public void onTaskSubmitted(ReportGenerationTaskSubmittedEvent event) {
     taskService.fetchAndProcess();
 }
 ```
 
-`AFTER_COMMIT` 保证监听器只在发布事件的事务完全提交之后运行。到那时，这行数据对所有
-连接可见，抓取就能找到它。
-
 调度器保持不变——它充当事件监听器漏掉任务的恢复机制。两种方式互补：事件负责延迟，
 轮询负责可靠性。
+
+### 更进一步：零查询发件箱
+
+上面的事件仍然要多付一次往返。它只说了「来了点新东西」，所以 worker 还得 `SELECT` 一次
+才知道是什么——而且在 `ORDER BY created_at` 之下，它甚至未必会选中触发事件的那个任务。
+当延迟真的很关键时，干脆把读取这一步省掉：**把执行任务所需的一切都放进事件里**，直接从
+内存执行，只把结果写回去。
+
+```mermaid
+sequenceDiagram
+    participant S as Service
+    participant DB as PostgreSQL
+    participant X as outboxExecutor
+
+    S->>DB: INSERT task (PROCESSING, heartbeat_at = now)
+    S->>DB: COMMIT
+    S-)X: event(taskId, payload) — AFTER_COMMIT
+    X->>X: generateReport(payload)
+    X->>DB: UPDATE state = COMPLETED WHERE id = ?
+    Note over DB,X: no SELECT anywhere on the happy path
+```
+
+这里用到了第三部分和第五部分的 `PROCESSING` 状态与心跳。这一行在插入时就已经是
+`PROCESSING`，并带着一个新鲜的 `heartbeat_at` 充当租约。正是这个细节保证了正确性：
+如果插入时是 `PENDING`，轮询器就可能在事件路径已经在执行它的同时认领它，任务就会被执行两次。
+
+```java
+public record ReportRequestedEvent(UUID taskId, Instant leasedAt, ReportGenerationPayload payload) {}
+
+@Transactional
+public void submit(ReportGenerationCommand command) {
+    var payload = ReportGenerationPayload.builder()
+            .from(command.getFrom())
+            .to(command.getTo())
+            .build();
+    var leasedAt = Instant.now().truncatedTo(ChronoUnit.MICROS); // Postgres stores microseconds
+    var entity = repository.save(ReportGenerationEntity.builder()
+            .state(TaskState.PROCESSING)
+            .heartbeatAt(leasedAt)        // lease: the poller leaves this row alone
+            .payload(payload)
+            .build());
+    eventPublisher.publishEvent(new ReportRequestedEvent(entity.getId(), leasedAt, payload));
+}
+```
+
+```java
+@Async("outboxExecutor")
+@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+public void onReportRequested(ReportRequestedEvent event) {
+    // UPDATE ... SET heartbeat_at = now()
+    //  WHERE id = :id AND state = 'PROCESSING' AND heartbeat_at = :leasedAt
+    if (repository.renewLease(event.taskId(), event.leasedAt()) == 0) {
+        return; // the event waited too long: recovery already handed the task to the poller
+    }
+    try (var heartbeat = heartbeatFactory.start(event.taskId())) {
+        generateReport(event.payload());
+        repository.markCompleted(event.taskId());              // UPDATE ... WHERE id = :id
+    } catch (Exception e) {
+        repository.markFailed(event.taskId(), e.getMessage()); // the poller retries it later
+    }
+}
+```
+
+开头那个 `renewLease` 检查比看上去更重要。租约在插入时设置，但心跳要等到某个线程接手事件
+之后才开始。如果事件在 executor 队列里待的时间超过了恢复阈值，恢复任务就会把这一行重置为
+`PENDING`，某个轮询器认领了它——然后排队中的那个事件会再执行它一次。这个条件更新把这种
+竞争变成了 no-op：谁不再持有原来的租约，谁就退出。
+
+每一种故障模式最终都会落回经典路径。如果监听器抛异常，任务变成 `FAILED`，由轮询器按退避
+策略重试。如果应用在执行中途挂掉，心跳停止，卡死任务恢复任务会重置它。如果线程池拒绝了
+事件，这一行就保持 `PROCESSING`，租约永远不会续期，等着被恢复——由于有租约检查，对这类行
+使用很短的恢复阈值是安全的。（想在被拒绝时直接把它交还给 `PENDING`，需要任务 id，而
+`@Async` 的拒绝处理器拿不到它；如果你想这么做，就自己往 executor 提交任务并捕获
+`TaskRejectedException`。）
+
+**取舍：由谁来控制工作量。** 轮询式发件箱是*拉*（pull）模式。它自己决定取多少任务、取多快，
+所以无论上游发生什么，它的负载在设计上都是有界的。零查询发件箱是*推*（push）模式：工作
+以请求到达的速率到来。流量尖峰会变成执行尖峰，唯一的刹车就是线程池大小和队列容量——一旦
+它们满了，你就在拒绝任务，最终还是回退到轮询。零查询适合对延迟敏感、量级适中、并配有有界
+线程池的工作；其余的一切仍交给轮询器，并且轮询器永远作为兜底存在。
+
+**榨干最后一次写入。** 为了追求极致吞吐，你还可以再进一步，不再逐个写入完成状态：把已完成
+的 id 收集在内存里，每隔几百毫秒用一条 `UPDATE` 批量刷回。
+
+```java
+@Component
+@RequiredArgsConstructor
+public class CompletionBuffer {
+
+    private final ConcurrentLinkedQueue<UUID> completed = new ConcurrentLinkedQueue<>();
+    private final ReportGenerationRepository repository;
+
+    public void add(UUID taskId) {
+        completed.add(taskId);
+    }
+
+    @Scheduled(fixedDelay = 200)
+    @PreDestroy                                   // flush what we can on a graceful shutdown
+    public void flush() {
+        var ids = new ArrayList<UUID>();
+        for (UUID id; ids.size() < 1_000 && (id = completed.poll()) != null; ) {
+            ids.add(id);
+        }
+        if (!ids.isEmpty()) {
+            repository.markCompleted(ids);        // UPDATE ... SET state = 'COMPLETED' WHERE id IN (:ids)
+        }
+    }
+}
+```
+
+关停时的 flush 只是尽力而为——之后还留在缓冲区里的、或者在 bean 销毁后才加入的，都会在
+之后被简单地重跑一遍。要准确地说清楚这样做的代价。崩溃会丢失缓冲区——丢的不是任务，而是
+*它们已完成的记录*。这些行保持 `PROCESSING`，恢复任务把它们重置，于是它们会**再次**执行。
+只有当每个 handler 都是幂等的（第十部分）时，这才可以接受。失败要立即写入，而不要缓冲：
+失败很少见，而它的错误信息是你事后唯一无法重建的东西。
 
 ---
 
@@ -447,16 +680,16 @@ public void onTaskSubmitted(ReportGenerationTaskSubmittedEvent event) {
 stateDiagram-v2
     [*] --> PENDING: submit()
 
-    PENDING --> PROCESSING: worker claims task\n(TX1 commits)
+    PENDING --> PROCESSING: worker claims task<br/>(TX1 commits)
 
-    PROCESSING --> COMPLETED: generateReport() succeeds\n(TX2 commits)
-    PROCESSING --> FAILED: generateReport() throws\n(TX2 commits)
-    PROCESSING --> PENDING: app crash detected\nstuck-task recovery job resets
+    PROCESSING --> COMPLETED: generateReport() succeeds<br/>(TX2 commits)
+    PROCESSING --> FAILED: generateReport() throws<br/>(TX2 commits)
+    PROCESSING --> PENDING: app crash detected<br/>stuck-task recovery job resets
 
-    FAILED --> PROCESSING: retry eligible\n(retryCount ≤ MAX and executeAt ≤ now)
-    FAILED --> [*]: retryCount > MAX\n(dead — manual ops)
+    FAILED --> PROCESSING: retry eligible<br/>(retryCount < MAX and executeAt ≤ now)
+    FAILED --> [*]: retryCount ≥ MAX<br/>(dead — manual ops)
 
-    COMPLETED --> [*]: cleanup job removes\nafter retention period
+    COMPLETED --> [*]: cleanup job removes<br/>after retention period
 ```
 
 发件箱动作不应该在未提交的数据库事务里执行。持锁事务的方式会在 `generateReport()` 的
@@ -557,7 +790,7 @@ public class ReportGenerationTaskService {
 @Query("""
     SELECT t FROM ReportGenerationEntity t
     WHERE t.state IN :states
-      AND t.retryCount <= :maxRetryCount
+      AND t.retryCount < :maxRetryCount
     ORDER BY t.createdAt ASC
     LIMIT 1
     """)
@@ -620,8 +853,35 @@ private void markFailed(ReportGenerationEntity task, Exception e) {
 }
 ```
 
-调度器保持原来的频率运行。它只是跳过窗口还没打开的任务。失败的任务安静地等到属于自己的
-时刻，然后自然地重新入队。
+抓取查询多了一个条件——`AND t.executeAt <= :now`——调度器保持原来的频率运行。它只是跳过
+窗口还没打开的任务。失败的任务安静地等到属于自己的时刻，然后自然地重新入队。
+
+### 抖动（Jitter）：在负载砸过来之前把它摊平
+
+固定的退避表有一个讨厌的特性：一起失败的任务会一起重试。如果邮件服务商挂了两分钟，在这个
+窗口内失败的 3,000 个任务全都拿到 `execute_at = failed_at + 1 minute`——等服务商一恢复，它们
+就作为一波整齐划一的浪潮再次砸过去。给每个延迟加上随机量，让这波浪潮散开：
+
+```java
+private static Instant nextAttempt(Duration baseDelay) {
+    long jitterMillis = ThreadLocalRandom.current().nextLong(baseDelay.toMillis() / 2 + 1);
+    return Instant.now().plus(baseDelay).plusMillis(jitterMillis); // base + up to 50%
+}
+```
+
+同样的思路也适用于**入口**。从架构上讲，异步引擎想要的是平稳、持续的负载——而不是突如其来
+的大尖峰。一个夜间导入任务在一个事务里提交 200,000 个任务，会让它们在同一毫秒全部具备执行
+资格；每个 pod 上的每个 worker 都被打满，下游系统承受整个突发流量，而你的延迟大盘为一堆
+根本没人在等的工作亮起红灯。当任务并不紧急时，在提交时就给它一个带抖动的 `execute_at`：
+
+```java
+// bulk / non-urgent submission: spread over the next 10 minutes instead of "all now"
+entity.setExecuteAt(Instant.now().plusMillis(
+        ThreadLocalRandom.current().nextLong(Duration.ofMinutes(10).toMillis())));
+```
+
+总工作量不变，只是在时间上摊开了。面向用户的任务保持 `execute_at = now()`；批量工作则按
+它能承受的等待时长，配一个相应大小的抖动窗口。
 
 ---
 
@@ -713,7 +973,7 @@ repository 方法自带 `@Transactional`——不需要手动包一层事务：
 ```java
 @Modifying
 @Transactional
-@Query("UPDATE ReportGenerationTaskEntity t SET t.heartbeatAt = :now WHERE t.id = :id")
+@Query("UPDATE ReportGenerationEntity t SET t.heartbeatAt = :now WHERE t.id = :id")
 void updateHeartbeatAt(@Param("id") UUID id, @Param("now") Instant now);
 ```
 
@@ -766,8 +1026,10 @@ public void fetchAndProcess() {
 @Query("UPDATE ReportGenerationEntity t SET t.heartbeatAt = :now WHERE t.id = :id")
 void updateHeartbeatAt(@Param("id") UUID id, @Param("now") Instant now);
 
-Optional<ReportGenerationEntity> findFirstByStateAndHeartbeatAtLessThan(
-        TaskState state, Instant threshold);
+@SkipLocked
+@Lock(LockModeType.PESSIMISTIC_WRITE)   // two recovery runs never reset the same task
+Optional<ReportGenerationEntity> findFirstByStateAndHeartbeatAtLessThanOrderByCreatedAt(
+        TaskState state, Instant heartbeatAt);
 ```
 
 `updated_at` 反映任务状态最后一次变更的时间。`heartbeat_at` 反映任务此刻是否还活着。
@@ -790,7 +1052,7 @@ flowchart TB
 
     subgraph after["✅ After — one table, handler per type"]
         direction TB
-        OT[(outbox_tasks\ntask_type column)] --> D[Dispatcher]
+        OT[(outbox_tasks<br/>task_type column)] --> D[Dispatcher]
         D --> H1[ReportHandler]
         D --> H2[EmailHandler]
         D --> H3[WebhookHandler]
@@ -919,7 +1181,7 @@ public class OutboxTaskService {
 @Query("""
     SELECT t FROM OutboxTaskEntity t
     WHERE t.state IN :states
-      AND t.retryCount <= :maxRetryCount
+      AND t.retryCount < :maxRetryCount
       AND t.executeAt <= :now
     ORDER BY t.createdAt ASC
     LIMIT 1
@@ -969,7 +1231,135 @@ private Long seq;
 
 `created_at` 留着做可观测性。排序用 `seq`。
 
+有一个注意事项，会坑到那些过分依赖它的人：序列值是在 `INSERT` 时分配的，而不是在 `COMMIT`
+时。事务 A 可以拿到 `seq = 100`，事务 B 拿到 `seq = 101` 并且先提交——在某个瞬间，worker
+能看到 101，却看不到 100。`seq` 给你的是稳定、与时钟无关的顺序；它本身并不能保证「绝不在
+100 之前处理 101」。如果这对某个实体是硬性要求，就让该实体的任务一次只处理一个（例如，只要
+同一个 key 下还有更早的任务处于 `PENDING` 或 `PROCESSING`，就跳过当前任务）。
+
 如果严格的 FIFO 在你的系统里很重要——别忘掉这一条。
+
+---
+
+## 第 7.5 部分 — 抓取策略：何时轮询，一次取多少
+
+到目前为止，worker 一直是一个每个 tick 只取一个任务的 `@Scheduled(fixedDelay = 1000)`。
+做演示没问题，但在生产环境里几乎从来不是你想要的。有两个决定至关重要：**由什么触发一次
+运行**，以及**一次运行取多少工作**。
+
+### 由什么触发一次运行
+
+| 触发方式 | Spring | 行为 | 适用场景 |
+|---|---|---|---|
+| 固定延迟 | `@Scheduled(fixedDelay = 1000)` | 下一次运行在*上一次结束之后* N ms 开始 | 大多数发件箱——天生能感知负载 |
+| 固定频率 | `@Scheduled(fixedRate = 1000)` | 每 N ms *排定*一次运行，不管每次跑多久 | 开销稳定的任务（指标、心跳） |
+| Cron | `@Scheduled(cron = "0 */5 * * * *")` | 按挂钟时间 | 清理、报表，以及一切与「每晚」挂钩的任务 |
+| 阈值 | 自定义触发器 | 积压 ≥ N 行，或最旧的任务等待超过 T 时运行 | 偏好批量调用的下游（批量 API） |
+
+在它们之间做选择可不是表面功夫。用 `fixedRate` 时，如果一次运行耗时超过周期，下一次会
+**紧接着**开始，于是一个缓慢的下游会把每秒一次的轮询器变成一个永不停歇的死循环。用
+`fixedDelay` 时，慢的运行只是把下一次往后推——系统吃力时，worker 会自然而然地放慢。
+
+### 两次运行会重叠吗？
+
+在**单个** Spring 实例内、使用默认调度器时，同一个 `@Scheduled` 方法不会与自己并发运行——
+即使用的是 `fixedRate`，迟到的那次也会等上一次结束。（如果你开启了虚拟线程，Boot 会使用
+另一种调度器；请对照它的文档重新确认这个假设。）很多人看到这个结论就放心了，而这恰恰是
+不该停下来的地方。在以下情况下，运行*确实*会重叠：
+
+- 你运行了**不止一个 pod**——每个生产部署都是如此；N 个 pod 就是 N 个并发 worker；
+- 被调度的方法是 `@Async` 的，或者把工作交给某个 executor 后立即返回。
+
+对于**锁住自己所处理的行**的任务，重叠没有问题；只要稍加小心，每个发件箱任务都能做到：
+
+- **抓取并处理**——这正是 `SKIP LOCKED` 的用武之地；重叠的 worker 只是分摊工作，代价是多跑
+  一些查询。
+- **清理**——当分批删除是一条内层 `SELECT` 使用 `FOR UPDATE SKIP LOCKED` 的原生查询时（第九
+  部分），两个清理任务删除同一范围也没问题：每次运行都只拿对方没锁住的行，谁也不用等谁。
+- **卡死任务恢复**——两次恢复运行可能会重置同一个任务，所以恢复查询也必须加行锁
+  （`FOR UPDATE SKIP LOCKED`，第五部分）。这样每一条卡死的行只会被一次运行拿到。
+
+对于确实无法做到行级安全的任务——比如「发送每日汇总邮件」——就只在一个实例上运行它。常用
+的工具是 **[ShedLock](https://github.com/lukas-krecan/ShedLock)**：一个小巧的库，确保一个定时
+任务在任意时刻最多只在一个节点上运行。每次运行之前，它会在一个共享存储（用你自己数据库里的
+一张表就行）里获取一把具名锁，锁被持有期间，其他节点会跳过这次运行。`lockAtMostFor` 保证
+即使持锁的节点挂了，锁也会被释放。
+
+```java
+@Scheduled(cron = "0 0 8 * * *")
+@SchedulerLock(name = "daily-summary", lockAtMostFor = "30m")
+public void sendDailySummary() { ... }
+```
+
+### 一次运行取多少：排空循环（drain loop）
+
+每个 tick 只取一个任务，会把吞吐上限钉死在每个 pod 每秒一个任务，不管你有多少余量。取一批
+会更好；更好的是让一次运行**持续抓取，直到队列被排空**，然后才结束这个 tick：
+
+```mermaid
+flowchart TD
+    T([tick starts]) --> F[claim up to N tasks<br/>FOR UPDATE SKIP LOCKED]
+    F --> E{got any?}
+    E -- no --> D([tick ends<br/>wait fixedDelay])
+    E -- yes --> P[process batch]
+    P --> L{time budget<br/>left?}
+    L -- yes --> F
+    L -- no --> D
+```
+
+队列为空时，一个 tick 的代价只是一次廉价的索引查询。积压出现时，worker 不再在批次之间
+等待，而是全速运行直到追上进度。时间预算很重要：没有它，在持续积压下一个 tick 永远不会
+结束，这会让优雅停机变得缓慢，并饿死共用调度线程的其他任务。
+
+而共用的通常*就只有*一个线程：Spring Boot 的调度器**默认只有单线程**。轮询器、卡死任务
+恢复、每小时的清理以及任何 flush 任务都排在彼此后面，所以一次 20 分钟的清理就意味着这个
+pod 上 20 分钟没有轮询。给调度器配上足以应付现有任务的线程数，或者把长任务放到它们自己的
+调度器上：
+
+```yaml
+spring:
+  task:
+    scheduling:
+      pool:
+        size: 4
+```
+
+```java
+@Scheduled(fixedDelay = 1000)
+public void run() {
+    var deadline = Instant.now().plus(Duration.ofSeconds(30));
+    List<OutboxTaskEntity> batch;
+    do {
+        batch = repository.claimBatch(BATCH_SIZE, MAX_RETRY_COUNT);
+        batch.forEach(this::processClaimedTask);
+    } while (!batch.isEmpty() && Instant.now().isBefore(deadline));
+}
+```
+
+用一条语句认领一批任务——在一次往返里完成查询、加锁和标记 `PROCESSING`：
+
+```java
+// no @Modifying: UPDATE ... RETURNING is read back like a SELECT
+@Transactional
+@Query(nativeQuery = true, value = """
+    UPDATE outbox_tasks
+       SET state = 'PROCESSING', heartbeat_at = now(), updated_at = now()
+     WHERE id IN (
+           SELECT id FROM outbox_tasks
+            WHERE state IN ('PENDING', 'FAILED')
+              AND retry_count < :maxRetryCount
+              AND execute_at <= now()
+            ORDER BY seq
+            LIMIT :batchSize
+              FOR UPDATE SKIP LOCKED)
+    RETURNING *
+    """)
+List<OutboxTaskEntity> claimBatch(@Param("batchSize") int batchSize,
+                                  @Param("maxRetryCount") int maxRetryCount);
+```
+
+批大小要让一批任务能在心跳窗口内宽裕地完成；还要记住，`UPDATE ... RETURNING` 不保证返回的
+行按 `seq` 排序——如果顺序重要，就在内存里对列表排一次序。
 
 ---
 
@@ -989,7 +1379,7 @@ private Long seq;
 
 ```sql
 CREATE INDEX idx_outbox_fetch
-    ON outbox_tasks (created_at ASC)
+    ON outbox_tasks (seq ASC)
     WHERE state IN ('PENDING', 'FAILED');
 ```
 
@@ -1034,7 +1424,10 @@ CREATE INDEX idx_outbox_cleanup
 规则：只删除 **`COMPLETED`** 的任务。`FAILED` 的任务是你的审计线索。别动它们。需要时
 人工处理，或者交给独立的运维流程。
 
+最直接的实现，是用一条 `DELETE` 删掉所有超出保留期的数据：
+
 ```java
+// ❌ fine on day one, dangerous on the day the job was broken for a week
 @Modifying
 @Transactional
 @Query("""
@@ -1048,20 +1441,66 @@ int deleteByStateInAndUpdatedAtBefore(
 );
 ```
 
+在 PostgreSQL 上，在**一个事务**里删除大量行的代价很高，而且这些代价不会体现在查询耗时上：
+
+- **WAL 膨胀。** 每一条被删除的行都会写进预写日志（WAL，往往还带着整页镜像）。删除一千万行
+  意味着几分钟内冒出几个 GB 的 WAL：被迫触发的 checkpoint、主库的磁盘压力、归档和副本在追赶
+  时落后，还有逻辑复制的消费者卡在解码一个巨型事务上。
+- **长时间持锁，以及一个陈旧的快照。** 一个巨型事务会对它碰过的所有行持有行锁，并且在它运行
+  期间，让 autovacuum 无法清理整个数据库里比它的快照更新的任何东西。
+- **全有或全无。** 如果它跑了 20 分钟后失败，一切回滚，下一次运行从零开始，面对的还是一堆
+  更大的数据。
+
+要**分小批、循环删除，每一批都在自己的短事务里**。我通常每个事务处理 10 万行左右；按你的
+硬件调整，让一批耗时一两秒即可。分批并不会让 WAL 总量变小——无论怎么删，删掉的都是同样
+那些行——但它把 WAL 摊开了，于是 checkpoint、归档和副本都能跟上，锁的持有时间很短，失败
+也只会损失当前这一批。
+
+```java
+@Modifying
+@Transactional
+@Query(nativeQuery = true, value = """
+    DELETE FROM outbox_tasks
+     WHERE id IN (
+           SELECT id FROM outbox_tasks
+            WHERE state = 'COMPLETED'
+              AND updated_at < :before
+            LIMIT :batchSize
+              FOR UPDATE SKIP LOCKED)       -- overlapping cleanup runs split the work
+    """)
+int deleteCompletedBatch(@Param("before") Instant before, @Param("batchSize") int batchSize);
+```
+
 ```java
 private static final int CLEANUP_RETENTION_DAYS = 30;
+private static final int CLEANUP_BATCH_SIZE = 100_000;
 
-@Transactional
-public void cleanup() {
+@Scheduled(cron = "0 0 * * * *")
+public void cleanup() {                       // deliberately NOT @Transactional
     var cutoff = Instant.now().minus(CLEANUP_RETENTION_DAYS, ChronoUnit.DAYS);
-    int deleted = repository.deleteByStateInAndUpdatedAtBefore(
-            List.of(TaskState.COMPLETED), cutoff);
-    log.info("Cleanup: removed {} completed tasks older than {} days", deleted, CLEANUP_RETENTION_DAYS);
+    var deadline = Instant.now().plus(Duration.ofMinutes(40)); // never run into the next hourly run
+    int total = 0;
+    int deleted;
+    do {
+        deleted = repository.deleteCompletedBatch(cutoff, CLEANUP_BATCH_SIZE); // own transaction
+        total += deleted;
+    } while (deleted == CLEANUP_BATCH_SIZE && Instant.now().isBefore(deadline));
+    log.info("Cleanup: removed {} completed tasks older than {} days", total, CLEANUP_RETENTION_DAYS);
 }
 ```
 
-保留多久：我见过从 1 天到 3 个月的各种做法。拿不准就留久一点。保留老行的代价是表稍微
-大一点；过早删除的代价是，在你最需要排查的那一天丢掉了调试历史。
+外层方法**不能**是 `@Transactional`——否则每一批都会加入同一个大事务，你又回到了一次巨型
+删除，只是多绕了几步。第八部分的部分索引 `idx_outbox_cleanup` 让每一批的内层 `SELECT`
+都保持廉价。
+
+发件箱也是你可能拥有的流转最频繁的表之一：每一行都要被插入、更新两三次、再被删除。每一次
+操作都会给 autovacuum 留下一个死元组。默认配置（死元组约占表的 20% 时才 vacuum）是为主要在
+增长的表调优的，所以在一张繁忙的发件箱表上，它们会放任膨胀在两次运行之间累积。只针对这一张
+表把 autovacuum 调得更激进——Postgres 允许用 `ALTER TABLE ... SET (...)` 按表覆盖 autovacuum
+参数，数据库的其他部分则保持默认。
+
+保留多久：我见过从任务一处理完就删除、到处理后再保留一个月的各种做法。拿不准就留久一点。
+保留老行的代价是表稍微大一点；过早删除的代价是，在你最需要排查的那一天丢掉了调试历史。
 
 ---
 
@@ -1111,10 +1550,14 @@ public class ReportGenerationHandler implements OutboxTaskHandler<ReportGenerati
 
         var reportPath = runReportGeneration(payload);
 
-        reports.save(GeneratedReport.builder()
-                .idempotencyKey(taskId)
-                .reportPath(reportPath)
-                .build());
+        try {
+            reports.saveAndFlush(GeneratedReport.builder()
+                    .idempotencyKey(taskId)
+                    .reportPath(reportPath)
+                    .build());
+        } catch (DataIntegrityViolationException e) { // saveAndFlush: surface it here, not at commit
+            log.info("Task {} was completed concurrently — treating as done", taskId);
+        }
     }
 }
 ```
@@ -1130,11 +1573,12 @@ public class ReportGenerationHandler implements OutboxTaskHandler<ReportGenerati
 发件箱在后台安静地运行。它正常工作时，没人注意。它坏掉时，同样没人注意——至少不会立刻
 注意到。任务越积越多。下游服务收不到事件。等有人想起来看日志，已经过去两个小时了。
 
-按照 Google SRE 模型，三个信号完整覆盖故障空间：
+Google SRE 书中的四个黄金信号，几乎可以一一对应到发件箱上：
 
 - **延迟（Latency）**——每个任务从被拾取到完成要多久？这里飙升意味着 handler 变慢或数据库承压。
 - **吞吐（Throughput）**——单位时间内有多少任务完成？跌到零意味着调度器没在运行，或者没有任务被认领。
 - **错误率（Error rate）**——多大比例的尝试以失败告终？超过约 5% 意味着某个下游依赖已劣化，重试积压正在增长。
+- **饱和度（Saturation）**——有多少工作在等待？看队列深度，更有用的是看**最旧的合格任务已经等了多久**：10,000 个只积压了 3 秒的任务是健康的，3 个已经积压 40 分钟的任务则不是。
 
 <img src="{{ site.baseurl }}/assets/img/outbox-grafana-dashboard.png" alt="Grafana 发件箱监控大盘" style="max-width: 100%; height: auto; border-radius: 8px; border: 1px solid #e5e7eb;">
 
@@ -1192,6 +1636,11 @@ public class OutboxMetrics {
 之后 service 只需要调用 `metrics.recordCompleted()` 和 `metrics.recordFailed()`——业务逻辑里
 不出现裸字符串。
 
+这个 gauge 里藏着一个陷阱：已经耗尽重试次数的 `FAILED` 行永远不会被删除（它们是审计线索），
+所以把所有 `FAILED` 行都算进去，会让「pending」只增不减，积压告警最终会永久处于触发状态。
+只统计仍然可以运行的行（`retry_count < max`），把耗尽重试的行单独暴露成一个 `outbox.tasks.dead`
+gauge——这个数应该是零，只要它不是零，就该有人去看一看。
+
 启动之后，`curl localhost:8080/actuator/prometheus | grep outbox` 会给你：
 
 ```
@@ -1219,17 +1668,103 @@ outbox_tasks_pending 0.0
 
 ---
 
+## 第十二部分 — 与它长期共处：部署与载荷变更
+
+每个发件箱在上线后的第一个月里都会遇到两件事，而这两件事在演示里都不会出现。
+
+### 优雅停机
+
+每一次部署都会杀掉正在执行任务的 pod。如果不加处理，这些任务都会停留在 `PROCESSING`，
+直到卡死任务恢复任务发现它们——按第五部分的阈值就是一小时——然后从头再跑一遍。对一个
+一天部署十次的团队来说，这意味着源源不断的一小时延迟和重复执行。
+
+你想要的停机顺序是：
+
+1. **停止接收新工作。** 让调度器和事件 executor 不再接受新任务。
+2. **让进行中的任务跑完**，但要设一个截止时间，并且能放进 Kubernetes 的
+   `terminationGracePeriodSeconds` 之内（默认 30 秒——如果你的任务需要更久，就调大它）。
+3. **把没跑完的交还回去。** 到截止时间仍在运行的任务：把它翻回 `PENDING`（按 id 一条
+   `UPDATE`），这样另一个 pod 一秒之内就能接手，而不是等上一小时。
+
+Spring Boot 通过配置就能给你其中的大部分：
+
+```yaml
+# Kubernetes: terminationGracePeriodSeconds: 60
+server:
+  shutdown: graceful
+spring:
+  lifecycle:
+    timeout-per-shutdown-phase: 15s
+  task:
+    scheduling:
+      shutdown:
+        await-termination: true
+        await-termination-period: 15s
+```
+
+……再加上第 2.5 部分里 `outboxExecutor` 上的 `setWaitForTasksToCompleteOnShutdown(true)` 和
+15 秒的等待。这些等待在很大程度上是依次执行的，而不是并行的，所以**要把它们加起来**：
+15 + 15 + 15 = 45 秒必须放得进宽限期，否则 pod 会在停机途中被杀掉，留下的恰恰就是你想避免的
+那些 `PROCESSING` 行。第 7.5 部分的排空循环也应该在批次之间检查一个「正在停机」标志，这样
+一个有积压的 pod 一旦被通知停止，就不再认领新的批次。
+
+### 载荷版本管理
+
+载荷会在表里躺上几分钟、几小时，或者——对于等待重试的 `FAILED` 任务——好几天。这意味着
+**读取载荷的代码往往比写入它的代码更新**。在 `ReportGenerationPayload` 里重命名一个字段、
+部署，上一个版本提交的所有任务都会反序列化失败。
+
+在哪里失败很关键。如果载荷被映射为类型化的 JSON 列（第一部分的 `@JdbcTypeCode(SqlTypes.JSON)`），
+Hibernate 会**在加载实体时——也就是在认领查询内部**——反序列化它。认领事务回滚，`retry_count`
+永远不会增加，同一条毒行在每个 tick 上反复失败。在 `LIMIT 1` 的情况下，或者在每个包含它的
+批次里，它都会让整个发件箱为所有人停摆。第六部分的多类型调度器更安全：它把载荷存成原始 JSON，
+在 handler 路径里才反序列化，所以一个坏载荷只会变成一个普通的 `FAILED` 任务。
+
+把载荷当作与过去的自己签下的契约：
+
+- 只做增量变更：新字段一律可选；在不再有任何旧结构的行可能处于 `PENDING` 或 `FAILED` 之前，
+  不要重命名或删除字段。
+- 让读取方保持宽容——在载荷类上加 `@JsonIgnoreProperties(ignoreUnknown = true)`——这样回滚后
+  仍然能读取新版本写入的行。（只设置 `spring.jackson.deserialization.fail-on-unknown-properties`
+  是不够的：除非你配置了 `hibernate.type.json_format_mapper`，否则 Hibernate 的 JSON 映射用的
+  是它自己的 mapper。）
+- 对于真正的破坏性变更，加一个 `payload_version` 列（或者新建一种任务类型），并保留旧的
+  handler，直到旧行全部消失。
+
+```sql
+ALTER TABLE outbox_tasks ADD COLUMN payload_version SMALLINT NOT NULL DEFAULT 1;
+```
+
+<div class="post-sticky" markdown="1">
+<p class="post-sticky-title">📌 经验之谈：Avro 载荷</p>
+
+在一个项目里，我们的发件箱载荷是 Avro 格式的，失败的载荷会进入一张死信表。把它们连同写入时
+的 schema 一起以原始字节存储，是在压力之下仓促做出的决定——但它管用，后来我们也确实把它们
+重放了。尽管如此，我不会再这么做了：纯 JSON 加增量变更要简单得多。
+</div>
+
+---
+
 ## 生产上线检查清单
 
 把任何发件箱推向生产之前：
 
 ```
+☐ 数据库事务内没有 Kafka 发送、HTTP 调用或其他任何外部 I/O
+☐ 已设置事务超时 + idle_in_transaction_session_timeout 作为防护
+☐ 抓取触发方式经过斟酌 — 默认 fixedDelay；每个任务都对自己处理的行加行锁（SKIP LOCKED）
+☐ 批量认领 / 带时间预算的排空循环，而不是每个 tick 只取一个任务
 ☐ 索引高效 — PENDING/FAILED 与 PROCESSING 状态上建有部分索引
 ☐ EXPLAIN ANALYZE 确认抓取查询用上了索引
 ☐ 顺序不构成问题 — ORDER BY seq 或 created_at，且有索引支撑
-☐ 已处理数据的清理任务在运行，COMPLETED 行在保留期后被删除
+☐ 事件监听器为 AFTER_COMMIT，并通过 @Async 运行在专用、有界的 executor 上
+☐ 带抖动的指数退避已接好 — 或确认本场景不需要
+☐ 批量提交用带抖动的 execute_at 摊开
+☐ 清理任务分批删除 COMPLETED 行，每批在自己的事务里
+☐ 已针对发件箱表调优 autovacuum
 ☐ 有副作用的 handler 内部处理了幂等
-☐ 指数退避已接好 — 或确认本场景不需要
+☐ 优雅停机会把未完成的任务交还回去，而不是让它们停留在 PROCESSING
+☐ 载荷变更向后兼容（或已做版本管理）
 ☐ 指标就位 — 队列深度、吞吐、错误率、延迟
 ☐ 告警已配置 — 积压、错误率、延迟、卡死任务
 ```
@@ -1255,10 +1790,30 @@ Java 的持久化、集群友好调度器。这是我会反复回用的库，也
 
 ---
 
+**[JobRunr](https://www.jobrunr.io/)** — 面向 Java 的后台任务库，几乎没有繁文缛节：你把一个
+lambda 加入队列（`BackgroundJob.enqueue(() -> reportService.generate(from, to))`），JobRunr
+会序列化这次调用、把它存进你的数据库，并在任意实例上执行它，开箱即带重试与退避、周期性（cron）
+任务以及一个 Web 控制台。它和 db-scheduler 属于同一类别，API 更友好、内置工具更多；部分功能
+（任务批次、优先级队列、限流）属于付费的 Pro 版。把它当作*发件箱*用之前，有一点要先确认：
+本文赖以成立的保证，是任务与你的业务变更保存在**同一个事务**里。在依赖它做到这一点之前，
+请先验证你所用的 JobRunr 版本和存储提供方在你的 `@Transactional` 方法里的实际行为。
+
+---
+
 **[Celery](https://docs.celeryq.dev/)** — Python 生态里事实标准的异步任务执行框架。Celery
 支持 PostgreSQL 作为结果后端（result backend），支持 Redis 或 RabbitMQ 作为 broker。
-第 2.5 节的 `AFTER_COMMIT` 模式在这里同样适用——只在事务提交之后再投递给 Celery，
+第 2.5 部分的 `AFTER_COMMIT` 模式在这里同样适用——只在事务提交之后再投递给 Celery，
 不要在事务内投递。
+
+---
+
+**[Debezium](https://debezium.io/documentation/reference/stable/transformations/outbox-event-router.html)**
+— 同一个问题的另一种解法，当发件箱存在的唯一目的就是向 Kafka 发布事件时，值得了解。Debezium
+不靠 worker 轮询表，而是读取数据库的预写日志（变更数据捕获，CDC），把每一条插入的发件箱行
+发布到 Kafka；它的 outbox event router 会把这一行转换成一条带正确 key 的消息。没有轮询延迟，
+表上也没有轮询负载。代价是要运维 Kafka Connect 和一个复制槽（replication slot）——而一个不再
+被消费的复制槽会让 Postgres 永远保留 WAL，所以它本身也需要监控。另外，它只覆盖「发布一个事件」
+这一种场景：对于「生成一份报表」或「带重试地调用这个 API」，你仍然需要本文所构建的任务执行引擎。
 
 ---
 
@@ -1266,6 +1821,16 @@ Java 的持久化、集群友好调度器。这是我会反复回用的库，也
 任务持久化。比发件箱更通用，带 cron 表达式、触发器和 job store。运维开销比 db-scheduler
 高，API 按现代标准也偏啰嗦，但它在大规模场景久经考验，并通过 `spring-boot-starter-quartz`
 与 Spring 有一等公民级的集成。
+
+---
+
+**[Spring Batch](https://spring.io/projects/spring-batch)** — 常常和上面这些相提并论，但它解决的
+是另一类问题。上面的一切（db-scheduler、JobRunr、Quartz、本文的发件箱）运行的是**大量小而独立
+的任务**：一封邮件、一个 webhook、一次报表请求。Spring Batch 运行的是**针对大数据集的一个大作业**：
+读取数百万行、分块（chunk）处理、写出结果、每个分块提交一次，并且——如果在第 3,200,000 行失败——
+从最后一个已提交的分块重新开始，而不是从零开始。它的 job repository 正是为此记录每一次运行和
+每一个步骤。它不排队任务，也不响应事件；总得有什么东西来启动这个作业。两者可以很好地结合：在我们
+的场景里，发件箱任务可以是「启动月度报表作业」，而作业本身可以是一个 Spring Batch 作业。
 
 ---
 
