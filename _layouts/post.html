@@ -66,6 +66,8 @@ css:
           var fontReady = document.fonts && document.fonts.load ? document.fonts.load('17px "Kalam"') : Promise.resolve();
           fontReady.catch(function () {}).then(function () { mermaid.run(); });
         </script>
+        <script src="{{ '/assets/js/code-label.js' | relative_url }}"></script>
+        <script>CodeLabel.mount(document);</script>
         {% include faq.html %}
     </div>
 </div>
