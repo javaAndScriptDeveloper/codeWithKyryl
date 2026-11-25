@@ -128,6 +128,7 @@ exclude:
   - openspec/
   - README.md
   - netlify.toml
+  - examples/
 #
 # exclude:
 #   - .sass-cache/
