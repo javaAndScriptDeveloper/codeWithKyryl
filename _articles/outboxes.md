@@ -1875,6 +1875,18 @@ in the source code.
 
 ---
 
+**[JobRunr](https://www.jobrunr.io/)** — background jobs for Java, with very little ceremony:
+you enqueue a lambda (`BackgroundJob.enqueue(() -> reportService.generate(from, to))`), and
+JobRunr serializes the call, stores it in your database, and runs it on any instance with retries
+and backoff, recurring (cron) jobs, and a web dashboard out of the box. It sits in the same
+category as db-scheduler, with a friendlier API and more built-in tooling; some features (job
+batches, priority queues, rate limiting) are in the paid Pro edition. One thing to check before
+using it as an *outbox*: the guarantee this article is built on is that the job is saved in the
+**same transaction** as your business change. Verify how your JobRunr version and storage
+provider behave inside your `@Transactional` method before you rely on it for that.
+
+---
+
 **[Celery](https://docs.celeryq.dev/)** — the de-facto standard for async task execution in
 the Python ecosystem. Celery supports PostgreSQL as a result backend and Redis or RabbitMQ as a
 broker. The `AFTER_COMMIT` pattern from Part 2.5 applies here too — push to Celery only after
@@ -1899,6 +1911,18 @@ library with JDBC-backed job persistence. More general than an outbox, with cron
 triggers, and job stores. The operational overhead is higher than db-scheduler and the API is
 verbose by modern standards, but it's proven at scale with first-class Spring integration via
 `spring-boot-starter-quartz`.
+
+---
+
+**[Spring Batch](https://spring.io/projects/spring-batch)** — often mentioned in the same breath,
+but it solves a different problem. Everything above (db-scheduler, JobRunr, Quartz, this article's
+outbox) runs **many small, independent tasks**: one email, one webhook, one report request.
+Spring Batch runs **one large job over a big dataset**: read millions of rows, process them in
+chunks, write the results, commit after each chunk, and — if it fails at row 3,200,000 — restart
+from the last committed chunk instead of from zero. Its job repository records every run and step
+for exactly that purpose. It doesn't queue work or react to events; something has to start the
+job. The two combine well: in our scenario, the outbox task can be "start the monthly report job",
+and the job itself can be a Spring Batch job.
 
 ---
 
