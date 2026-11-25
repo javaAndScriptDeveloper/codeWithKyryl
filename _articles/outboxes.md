@@ -1067,6 +1067,8 @@ The recovery job uses `heartbeat_at` instead of `updated_at`:
 @Query("UPDATE ReportGenerationEntity t SET t.heartbeatAt = :now WHERE t.id = :id")
 void updateHeartbeatAt(@Param("id") UUID id, @Param("now") Instant now);
 
+@SkipLocked
+@Lock(LockModeType.PESSIMISTIC_WRITE)   // two recovery runs never reset the same task
 Optional<ReportGenerationEntity> findFirstByStateAndHeartbeatAtLessThan(
         TaskState state, Instant threshold);
 ```
@@ -1320,21 +1322,31 @@ is where many people stop, and it is the wrong place to stop. Runs *do* overlap 
 
 - you run **more than one pod** — which is every production deployment; N pods are N concurrent
   workers;
-- the scheduled method is `@Async`, or hands work to an executor and returns immediately;
-- you use Quartz without `@DisallowConcurrentExecution`;
-- you use a Kubernetes `CronJob` — its default `concurrencyPolicy` is `Allow`, so a run that
-  outlives its schedule gets a sibling.
+- the scheduled method is `@Async`, or hands work to an executor and returns immediately.
 
-For the fetch-and-process path this is fine — that's what `SKIP LOCKED` is for; overlapping
-workers just split the work, at the cost of some extra queries. It is **not** fine for jobs
-that aren't built for it: two cleanup jobs deleting the same range wait on each other's locks;
-two stuck-task recovery jobs can both reset the same task. For those singleton jobs, take a
-lock first — ShedLock, or a Postgres advisory lock:
+Overlap is fine for any job that **locks the rows it works on**, and with a bit of care every
+outbox job can:
+
+- **Fetch-and-process** — that's what `SKIP LOCKED` is for; overlapping workers just split the
+  work, at the cost of some extra queries.
+- **Cleanup** — two cleanup runs deleting the same range are fine when the batch delete is a
+  native query whose inner `SELECT` uses `FOR UPDATE SKIP LOCKED` (Part 9): each run takes rows
+  the other hasn't locked, and neither waits.
+- **Stuck-task recovery** — two recovery runs could both reset the same task, so the recovery
+  query must take a row lock too (`FOR UPDATE SKIP LOCKED`, Part 5). Then only one run gets
+  each stuck row.
+
+For a job that genuinely can't be made row-safe — say, "send the daily summary email" — run
+it on one instance only. The usual tool is **[ShedLock](https://github.com/lukas-krecan/ShedLock)**:
+a small library that makes sure a scheduled task runs on at most one node at a time. Before a
+run, it takes a named lock in a shared store (a table in your own database works fine), and
+other nodes skip that run while the lock is held. `lockAtMostFor` releases the lock even if the
+node holding it dies.
 
 ```java
-@Scheduled(cron = "0 0 * * * *")
-@SchedulerLock(name = "outbox-cleanup", lockAtMostFor = "50m")
-public void cleanup() { ... }
+@Scheduled(cron = "0 0 8 * * *")
+@SchedulerLock(name = "daily-summary", lockAtMostFor = "30m")
+public void sendDailySummary() { ... }
 ```
 
 ### How much one run takes: the drain loop
@@ -1518,7 +1530,8 @@ only loses the current batch.
            SELECT id FROM outbox_tasks
             WHERE state = 'COMPLETED'
               AND updated_at < :before
-            LIMIT :batchSize)
+            LIMIT :batchSize
+              FOR UPDATE SKIP LOCKED)       -- overlapping cleanup runs split the work
     """)
 int deleteCompletedBatch(@Param("before") Instant before, @Param("batchSize") int batchSize);
 ```
@@ -1528,10 +1541,9 @@ private static final int CLEANUP_RETENTION_DAYS = 30;
 private static final int CLEANUP_BATCH_SIZE = 100_000;
 
 @Scheduled(cron = "0 0 * * * *")
-@SchedulerLock(name = "outbox-cleanup", lockAtMostFor = "50m")
 public void cleanup() {                       // deliberately NOT @Transactional
     var cutoff = Instant.now().minus(CLEANUP_RETENTION_DAYS, ChronoUnit.DAYS);
-    var deadline = Instant.now().plus(Duration.ofMinutes(40)); // finish well inside lockAtMostFor
+    var deadline = Instant.now().plus(Duration.ofMinutes(40)); // never run into the next hourly run
     int total = 0;
     int deleted;
     do {
@@ -1817,7 +1829,7 @@ Before shipping any outbox to production:
 ```
 ☐ No Kafka sends, HTTP calls or other external I/O inside a DB transaction
 ☐ Transaction timeout + idle_in_transaction_session_timeout set as guards
-☐ Fetch trigger chosen deliberately — fixedDelay by default; singleton jobs (cleanup, recovery) locked
+☐ Fetch trigger chosen deliberately — fixedDelay by default; every job row-locks what it touches (SKIP LOCKED)
 ☐ Batch claiming / drain loop with a time budget, not one task per tick
 ☐ Indexes are efficient — partial indexes on PENDING/FAILED and PROCESSING states
 ☐ EXPLAIN ANALYZE confirms index usage on the fetch query
