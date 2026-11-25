@@ -129,6 +129,7 @@ exclude:
   - README.md
   - netlify.toml
   - examples/
+  - docs/
 #
 # exclude:
 #   - .sass-cache/

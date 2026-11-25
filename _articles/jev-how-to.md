@@ -1,5 +1,7 @@
 ---
 layout: post
+published: false
+sitemap: false
 title: "How to use Jev from Java: typed AI decisions"
 date: 2026-09-25
 tags: [jev, java, tutorial]
