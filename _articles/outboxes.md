@@ -1818,9 +1818,9 @@ ALTER TABLE outbox_tasks ADD COLUMN payload_version SMALLINT NOT NULL DEFAULT 1;
 <div class="post-sticky" markdown="1">
 <p class="post-sticky-title">📌 From experience: Avro payloads</p>
 
-On one project our outbox payloads were Avro, and failed ones went to a dead-letter table. It
-wasn't my choice: I was pushed to store them as raw bytes together with their writer schema.
-It worked, and we did replay them later. Still, I wouldn't do it again: plain JSON with additive
+On one project our outbox payloads were Avro, and failed ones went to a dead-letter table. Storing
+them as raw bytes together with their writer schema was a decision made in a hurry, under
+pressure — but it worked, and we did replay them later. Still, I wouldn't do it again: plain JSON with additive
 changes is far simpler.
 </div>
 
