@@ -320,6 +320,67 @@ Instead, claim the row in a short transaction by moving it to `PROCESSING`, comm
 lock, and only then execute the outbox action. Record `COMPLETED` or `FAILED` in another short
 transaction afterward. The next section implements that state transition and its recovery path.
 
+### Never Talk to the Outside World Inside a Transaction
+
+The same rule applies far beyond the outbox worker, and it's the single most common way I've seen
+outbox-adjacent code take a service down. It looks harmless:
+
+```java
+// ❌ Kafka send (or an HTTP call, or an S3 upload) inside an open DB transaction
+@Transactional
+public void approveOrder(UUID orderId) {
+    var order = orderRepository.findById(orderId).orElseThrow();
+    order.setStatus(OrderStatus.APPROVED);
+
+    kafkaTemplate.send("order-approved", orderId.toString(), toEvent(order)).get(); // blocks
+    billingClient.notifyApproved(orderId);                                         // blocks
+}
+```
+
+On a good day Kafka acks in 5ms and the billing service answers in 30ms, so nobody notices. On a
+bad day the broker is rebalancing or the billing service is degraded, and every call takes 30
+seconds before it times out. Now **every** in-flight transaction is open for 30 seconds:
+
+- each one holds a pooled connection — with 20 connections and 30-second calls, your whole service
+  can approve 20 orders per 30 seconds, and everything else (including healthy read endpoints)
+  queues for the pool and starts timing out;
+- each one holds row locks — anything that touches the same orders waits behind them;
+- each one pins an old snapshot — Postgres can't vacuum past it, so bloat builds up across the
+  whole database, not just this table.
+
+A degradation in a dependency you don't own just became an outage in a database you do own. **The
+duration of a database transaction must never depend on an external resource.** The transaction
+should only ever wait on the database itself.
+
+It is also still a dual write. If the Kafka send succeeds and the commit then fails (constraint
+violation, serialization failure, the pod is killed), consumers have already seen an
+`order-approved` event for an order that was never approved. Moving the send *after* the commit
+just flips the failure mode: committed, but the event is lost. This is exactly the problem the
+outbox exists to solve — write the intent to the outbox in the transaction, and let a worker talk
+to Kafka afterwards.
+
+Two guards are worth adding even when the code is correct, because the next person to touch it
+may not know the rule:
+
+```java
+@Transactional(timeout = 5) // seconds
+public void approveOrder(UUID orderId) { ... }
+```
+
+Spring's `timeout` does not interrupt a call that is already blocked — it is a deadline checked by
+the database work that follows. Any statement issued after the deadline (including the flush at
+commit) fails with `TransactionTimedOutException` and the transaction rolls back. Treat it as a
+tripwire that turns "slow and silent" into "fails loudly in tests and logs", not as a cure.
+
+```sql
+-- server-side safety net: kill sessions that sit idle inside an open transaction
+ALTER DATABASE app SET idle_in_transaction_session_timeout = '30s';
+```
+
+`idle_in_transaction_session_timeout` is exactly the situation above from Postgres' point of view:
+the session opened a transaction and then went quiet while the application waited on something
+else.
+
 ---
 
 ## Part 2.5 — Reducing Latency with Application Events
@@ -567,7 +628,7 @@ attempts something is genuinely broken and needs eyes on it, not another retry.
 @Query("""
     SELECT t FROM ReportGenerationEntity t
     WHERE t.state IN :states
-      AND t.retryCount <= :maxRetryCount
+      AND t.retryCount < :maxRetryCount
     ORDER BY t.createdAt ASC
     LIMIT 1
     """)
@@ -634,8 +695,38 @@ private void markFailed(ReportGenerationEntity task, Exception e) {
 }
 ```
 
-The scheduler keeps running at the same rate. It just skips tasks whose window hasn't opened.
-Failed tasks sit quietly until their time comes, then re-enter naturally.
+The fetch query gains one condition — `AND t.executeAt <= :now` — and the scheduler keeps running
+at the same rate. It just skips tasks whose window hasn't opened. Failed tasks sit quietly until
+their time comes, then re-enter naturally.
+
+### Jitter: Flatten the Load Before It Hits You
+
+A fixed backoff schedule has a nasty property: tasks that failed together retry together. If the
+email provider was down for two minutes, the 3,000 tasks that failed in that window all get
+`execute_at = failed_at + 1 minute` — and hit the provider again as one synchronized wave the
+moment it comes back. Add randomness to every delay so the wave spreads out:
+
+```java
+private static Instant nextAttempt(Duration baseDelay) {
+    long jitterMillis = ThreadLocalRandom.current().nextLong(baseDelay.toMillis() / 2 + 1);
+    return Instant.now().plus(baseDelay).plusMillis(jitterMillis); // base + up to 50%
+}
+```
+
+The same idea applies on the way **in**. Architecturally, an async engine wants a flat, steady
+load — not big, sudden spikes. A nightly import that submits 200,000 tasks in one transaction
+makes all of them eligible at the same millisecond; every worker on every pod saturates, the
+downstream system gets the full burst, and your latency dashboards light up for work that nobody
+was waiting for. When a task is not urgent, give it a jittered `execute_at` at submit time:
+
+```java
+// bulk / non-urgent submission: spread over the next 10 minutes instead of "all now"
+entity.setExecuteAt(Instant.now().plusMillis(
+        ThreadLocalRandom.current().nextLong(Duration.ofMinutes(10).toMillis())));
+```
+
+The total amount of work is unchanged; it is just spread out over time. User-facing tasks keep
+`execute_at = now()`; batch work gets a jitter window sized to how long it can afford to wait.
 
 ---
 
@@ -730,7 +821,7 @@ The repository method carries its own `@Transactional` — no need to wrap the c
 ```java
 @Modifying
 @Transactional
-@Query("UPDATE ReportGenerationTaskEntity t SET t.heartbeatAt = :now WHERE t.id = :id")
+@Query("UPDATE ReportGenerationEntity t SET t.heartbeatAt = :now WHERE t.id = :id")
 void updateHeartbeatAt(@Param("id") UUID id, @Param("now") Instant now);
 ```
 
@@ -940,7 +1031,7 @@ sort by `created_at ASC` in your fetch query:
 @Query("""
     SELECT t FROM OutboxTaskEntity t
     WHERE t.state IN :states
-      AND t.retryCount <= :maxRetryCount
+      AND t.retryCount < :maxRetryCount
       AND t.executeAt <= :now
     ORDER BY t.createdAt ASC
     LIMIT 1
@@ -995,7 +1086,121 @@ instance's clock said.
 
 Keep `created_at` for observability. Use `seq` for ordering.
 
+One caveat that bites people who rely on this too hard: a sequence value is assigned at `INSERT`,
+not at `COMMIT`. Transaction A can take `seq = 100`, transaction B takes `seq = 101` and commits
+first — for a moment the worker sees 101 but not 100. `seq` gives you a stable, clock-independent
+order; it does not, on its own, give you "never process 101 before 100". If that is a hard
+requirement for one entity, process that entity's tasks one at a time (for example, skip a task
+while an older task for the same key is still `PENDING` or `PROCESSING`).
+
 If strict FIFO matters in your system — don't forget this.
+
+---
+
+## Part 7.5 — Fetch Strategies: When to Poll and How Much to Take
+
+So far the worker has been a `@Scheduled(fixedDelay = 1000)` that takes one task per tick. That is
+fine for a demo and almost never what you want in production. Two decisions matter: **what
+triggers a run**, and **how much work one run takes**.
+
+### What triggers a run
+
+| Trigger | Spring | Behaviour | Good for |
+|---|---|---|---|
+| Fixed delay | `@Scheduled(fixedDelay = 1000)` | next run starts N ms *after the previous one finished* | most outboxes — load-aware by design |
+| Fixed rate | `@Scheduled(fixedRate = 1000)` | runs are *scheduled* every N ms, regardless of how long they take | steady-cost jobs (metrics, heartbeats) |
+| Cron | `@Scheduled(cron = "0 */5 * * * *")` | wall-clock times | cleanup, reports, anything tied to "nightly" |
+| Threshold | your own trigger | run when backlog ≥ N rows or the oldest task is older than T | downstreams that prefer batches (bulk APIs) |
+
+Choosing between them is not cosmetic. With `fixedRate`, a run that takes longer than the period
+is followed **immediately** by the next one, so a slow downstream turns a 1-second poller into a
+tight loop that never rests. With `fixedDelay`, a slow run simply pushes the next run back — the
+worker naturally slows down when the system is struggling.
+
+### Can two runs overlap?
+
+Within **one** Spring instance, the same `@Scheduled` method does not run concurrently with
+itself — even with `fixedRate`, a late run waits for the previous one to finish. That reassurance
+is where many people stop, and it is the wrong place to stop. Runs *do* overlap when:
+
+- you run **more than one pod** — which is every production deployment; N pods are N concurrent
+  workers;
+- the scheduled method is `@Async`, or hands work to an executor and returns immediately;
+- you use Quartz without `@DisallowConcurrentExecution`;
+- you use a Kubernetes `CronJob` — its default `concurrencyPolicy` is `Allow`, so a run that
+  outlives its schedule gets a sibling.
+
+For the fetch-and-process path this is fine — that's what `SKIP LOCKED` is for; overlapping
+workers just split the work, at the cost of some extra queries. It is **not** fine for jobs
+that aren't built for it: two cleanup jobs deleting the same range wait on each other's locks;
+two stuck-task recovery jobs can both reset the same task. For those singleton jobs, take a
+lock first — ShedLock, or a Postgres advisory lock:
+
+```java
+@Scheduled(fixedDelay = 60_000)
+@SchedulerLock(name = "outbox-cleanup", lockAtMostFor = "10m")
+public void cleanup() { ... }
+```
+
+### How much one run takes: the drain loop
+
+Taking one task per tick caps throughput at one task per second per pod, no matter how much
+capacity you have. Taking a batch is better; better still is a run that **keeps fetching until
+the queue is drained**, and only then ends its tick:
+
+```mermaid
+flowchart TD
+    T([tick starts]) --> F[claim up to N tasks<br/>FOR UPDATE SKIP LOCKED]
+    F --> E{got any?}
+    E -- no --> D([tick ends<br/>wait fixedDelay])
+    E -- yes --> P[process batch]
+    P --> L{time budget<br/>left?}
+    L -- yes --> F
+    L -- no --> D
+```
+
+When the queue is empty, a tick costs one cheap indexed query. When a backlog builds up, the
+worker stops waiting between batches and runs at full speed until it catches up. The time budget
+matters: without it, a tick under a sustained backlog never ends, which makes graceful shutdown
+slow and starves any other job sharing the scheduler thread.
+
+```java
+@Scheduled(fixedDelay = 1000)
+public void run() {
+    var deadline = Instant.now().plus(Duration.ofSeconds(30));
+    List<OutboxTaskEntity> batch;
+    do {
+        batch = repository.claimBatch(BATCH_SIZE, MAX_RETRY_COUNT);
+        batch.forEach(this::processClaimedTask);
+    } while (!batch.isEmpty() && Instant.now().isBefore(deadline));
+}
+```
+
+Claim the batch in one statement — select, lock and mark `PROCESSING` in a single round trip:
+
+```java
+// no @Modifying: UPDATE ... RETURNING is read back like a SELECT
+@Transactional
+@Query(nativeQuery = true, value = """
+    UPDATE outbox_tasks
+       SET state = 'PROCESSING', heartbeat_at = now(), updated_at = now()
+     WHERE id IN (
+           SELECT id FROM outbox_tasks
+            WHERE state IN ('PENDING', 'FAILED')
+              AND retry_count < :maxRetryCount
+              AND execute_at <= now()
+            ORDER BY seq
+            LIMIT :batchSize
+              FOR UPDATE SKIP LOCKED)
+    RETURNING *
+    """)
+List<OutboxTaskEntity> claimBatch(@Param("batchSize") int batchSize,
+                                  @Param("maxRetryCount") int maxRetryCount);
+```
+
+Size the batch so that one batch finishes well within the heartbeat window, and remember that
+`UPDATE ... RETURNING` does not guarantee the returned rows come back in `seq` order — sort the
+list in memory if order matters.
 
 ---
 
