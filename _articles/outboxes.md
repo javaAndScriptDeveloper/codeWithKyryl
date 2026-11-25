@@ -348,9 +348,11 @@ seconds before it times out. Now **every** in-flight transaction is open for 30 
 - each one holds a pooled connection — with 20 connections and 30-second calls, your whole service
   can approve 20 orders per 30 seconds, and everything else (including healthy read endpoints)
   queues for the pool and starts timing out;
-- each one holds row locks — anything that touches the same orders waits behind them;
-- each one pins an old snapshot — Postgres can't vacuum past it, so bloat builds up across the
-  whole database, not just this table.
+- once it has written (with JPA that may be only at the commit flush, but often earlier), it
+  holds row locks — anything that touches the same orders waits behind them;
+- a long transaction that has written something holds back Postgres' vacuum horizon — dead rows
+  across the whole database can't be cleaned up until it ends, so bloat builds up everywhere, not
+  just in this table.
 
 A degradation in a dependency you don't own just became an outage in a database you do own. **The
 duration of a database transaction must never depend on an external resource.** The transaction
@@ -373,7 +375,7 @@ public void approveOrder(UUID orderId) { ... }
 
 Spring's `timeout` does not interrupt a call that is already blocked — it is a deadline checked by
 the database work that follows. Any statement issued after the deadline (including the flush at
-commit) fails with `TransactionTimedOutException` and the transaction rolls back. Treat it as a
+commit) fails with a timeout exception and the transaction rolls back. Treat it as a
 tripwire that turns "slow and silent" into "fails loudly in tests and logs", not as a cure.
 
 ```sql
@@ -477,6 +479,20 @@ public class ReportGenerationTaskEventListener {
 }
 ```
 
+Notice that the listener does not pass `event.taskId()` on. That is deliberate: the event is only
+a **wake-up signal**, and `fetchAndProcess()` claims work exactly as the poller does — the oldest
+eligible task, with `SKIP LOCKED`. The task that triggered the event may not be the one that runs,
+but ordering and claiming stay in one place. If you would rather run *that* task right now, pass
+the id and claim it directly:
+
+```java
+taskService.process(event.taskId()); // WHERE id = :id AND state = 'PENDING' FOR UPDATE SKIP LOCKED
+```
+
+That gives the submitter the lowest latency, at the price of letting new tasks overtake older
+`PENDING` ones — fine for independent work, wrong if you rely on FIFO (Part 7). The zero-select
+outbox at the end of this part takes the idea to its conclusion and passes the whole payload.
+
 `@Async` is not decoration. An `AFTER_COMMIT` listener without it runs **synchronously on the
 thread that committed** — the HTTP request thread. The user's "202 Accepted" now waits for the
 whole report to be generated. Worse, at that point the committed transaction's resources are
@@ -506,11 +522,18 @@ public class OutboxExecutorConfig {
         executor.setThreadNamePrefix("outbox-");        // readable thread dumps and logs
         executor.setRejectedExecutionHandler(new ThreadPoolExecutor.DiscardPolicy());
         executor.setWaitForTasksToCompleteOnShutdown(true);
-        executor.setAwaitTerminationSeconds(30);
+        executor.setAwaitTerminationSeconds(15);
         return executor;
     }
 }
 ```
+
+One Spring Boot detail to know before copying this: Boot only auto-configures its
+`applicationTaskExecutor` when you have **not** declared an `Executor` bean yourself. Declare
+`outboxExecutor` and the default disappears — every *unnamed* `@Async` elsewhere in the app quietly
+lands on a different executor (possibly this one, with its discard policy). On Boot 3.5+, set
+`spring.task.execution.mode=force` to keep the auto-configured one; on older versions, declare an
+`applicationTaskExecutor` bean explicitly next to this one.
 
 Discarding on overflow is safe here *because the row is in the database*: the event is only a
 latency optimisation, and the poller picks up anything the event path dropped. Never use
@@ -580,7 +603,7 @@ if the row were inserted `PENDING`, the poller could claim it while the event pa
 executing it, and the task would run twice.
 
 ```java
-public record ReportRequestedEvent(UUID taskId, ReportGenerationPayload payload) {}
+public record ReportRequestedEvent(UUID taskId, Instant leasedAt, ReportGenerationPayload payload) {}
 
 @Transactional
 public void submit(ReportGenerationCommand command) {
@@ -588,12 +611,13 @@ public void submit(ReportGenerationCommand command) {
             .from(command.getFrom())
             .to(command.getTo())
             .build();
+    var leasedAt = Instant.now().truncatedTo(ChronoUnit.MICROS); // Postgres stores microseconds
     var entity = repository.save(ReportGenerationEntity.builder()
             .state(TaskState.PROCESSING)
-            .heartbeatAt(Instant.now())   // lease: the poller leaves this row alone
+            .heartbeatAt(leasedAt)        // lease: the poller leaves this row alone
             .payload(payload)
             .build());
-    eventPublisher.publishEvent(new ReportRequestedEvent(entity.getId(), payload));
+    eventPublisher.publishEvent(new ReportRequestedEvent(entity.getId(), leasedAt, payload));
 }
 ```
 
@@ -601,6 +625,11 @@ public void submit(ReportGenerationCommand command) {
 @Async("outboxExecutor")
 @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 public void onReportRequested(ReportRequestedEvent event) {
+    // UPDATE ... SET heartbeat_at = now()
+    //  WHERE id = :id AND state = 'PROCESSING' AND heartbeat_at = :leasedAt
+    if (repository.renewLease(event.taskId(), event.leasedAt()) == 0) {
+        return; // the event waited too long: recovery already handed the task to the poller
+    }
     try (var heartbeat = heartbeatFactory.start(event.taskId())) {
         generateReport(event.payload());
         repository.markCompleted(event.taskId());              // UPDATE ... WHERE id = :id
@@ -610,12 +639,19 @@ public void onReportRequested(ReportRequestedEvent event) {
 }
 ```
 
+The `renewLease` check at the start matters more than it looks. The lease is set at insert, but
+the heartbeat only starts once a thread picks the event up. If the event sits in the executor
+queue longer than the recovery threshold, the recovery job resets the row to `PENDING`, a poller
+claims it — and then the queued event would run it a second time. The conditional update turns
+that race into a no-op: whoever no longer owns the original lease backs off.
+
 Every failure mode lands back in the classic path. If the listener throws, the task is `FAILED`
 and the poller retries it with backoff. If the app dies mid-execution, the heartbeat stops and the
 stuck-task recovery job resets it. If the pool rejects the event, the row sits as `PROCESSING`
-with a lease that is never renewed — either flip it back to `PENDING` in the rejection handler
-(one `UPDATE` by id) or accept that it waits for recovery. That last case is why the zero-select
-path wants a short recovery threshold.
+with a lease that is never renewed and waits for recovery — because of the lease check, a short
+recovery threshold for these rows is safe. (Handing it straight back to `PENDING` on rejection
+needs the task id, which an `@Async` rejection handler doesn't get; submit to the executor
+yourself and catch `TaskRejectedException` if you want that.)
 
 **The trade-off: who controls the amount of work.** A polling outbox *pulls*. It decides how many
 tasks to take and how fast, so its load is bounded by design no matter what happens upstream. A
@@ -655,7 +691,8 @@ public class CompletionBuffer {
 }
 ```
 
-Be precise about what this costs. A crash loses the buffer — not the tasks, but the *record that
+The shutdown flush is best effort — anything still in the buffer after it, or added after the
+bean is destroyed, is simply re-run later. Be precise about what this costs. A crash loses the buffer — not the tasks, but the *record that
 they finished*. Those rows stay `PROCESSING`, recovery resets them, and they execute **again**.
 That is only acceptable when every handler is idempotent (Part 10). Write failures immediately
 rather than buffering them: they are rare, and their error message is the one thing you can't
@@ -675,8 +712,8 @@ stateDiagram-v2
     PROCESSING --> FAILED: generateReport() throws<br/>(TX2 commits)
     PROCESSING --> PENDING: app crash detected<br/>stuck-task recovery job resets
 
-    FAILED --> PROCESSING: retry eligible<br/>(retryCount ≤ MAX and executeAt ≤ now)
-    FAILED --> [*]: retryCount > MAX<br/>(dead — manual ops)
+    FAILED --> PROCESSING: retry eligible<br/>(retryCount < MAX and executeAt ≤ now)
+    FAILED --> [*]: retryCount ≥ MAX<br/>(dead — manual ops)
 
     COMPLETED --> [*]: cleanup job removes<br/>after retention period
 ```
@@ -1275,8 +1312,10 @@ worker naturally slows down when the system is struggling.
 
 ### Can two runs overlap?
 
-Within **one** Spring instance, the same `@Scheduled` method does not run concurrently with
-itself — even with `fixedRate`, a late run waits for the previous one to finish. That reassurance
+Within **one** Spring instance, with the default scheduler, the same `@Scheduled` method does not
+run concurrently with itself — even with `fixedRate`, a late run waits for the previous one to
+finish. (If you have switched on virtual threads, Boot uses a different scheduler; re-check this
+assumption against its documentation.) That reassurance
 is where many people stop, and it is the wrong place to stop. Runs *do* overlap when:
 
 - you run **more than one pod** — which is every production deployment; N pods are N concurrent
@@ -1293,8 +1332,8 @@ two stuck-task recovery jobs can both reset the same task. For those singleton j
 lock first — ShedLock, or a Postgres advisory lock:
 
 ```java
-@Scheduled(fixedDelay = 60_000)
-@SchedulerLock(name = "outbox-cleanup", lockAtMostFor = "10m")
+@Scheduled(cron = "0 0 * * * *")
+@SchedulerLock(name = "outbox-cleanup", lockAtMostFor = "50m")
 public void cleanup() { ... }
 ```
 
@@ -1319,6 +1358,19 @@ When the queue is empty, a tick costs one cheap indexed query. When a backlog bu
 worker stops waiting between batches and runs at full speed until it catches up. The time budget
 matters: without it, a tick under a sustained backlog never ends, which makes graceful shutdown
 slow and starves any other job sharing the scheduler thread.
+
+And there usually *is* only one: Spring Boot's scheduler has **a single thread by default**. The
+poller, the stuck-task recovery job, the hourly cleanup and any flush job all queue behind each
+other, so a 20-minute cleanup run means 20 minutes without polling on that pod. Give the scheduler
+enough threads for the jobs you have, or put long jobs on their own scheduler:
+
+```yaml
+spring:
+  task:
+    scheduling:
+      pool:
+        size: 4
+```
 
 ```java
 @Scheduled(fixedDelay = 1000)
@@ -1479,12 +1531,13 @@ private static final int CLEANUP_BATCH_SIZE = 100_000;
 @SchedulerLock(name = "outbox-cleanup", lockAtMostFor = "50m")
 public void cleanup() {                       // deliberately NOT @Transactional
     var cutoff = Instant.now().minus(CLEANUP_RETENTION_DAYS, ChronoUnit.DAYS);
+    var deadline = Instant.now().plus(Duration.ofMinutes(40)); // finish well inside lockAtMostFor
     int total = 0;
     int deleted;
     do {
         deleted = repository.deleteCompletedBatch(cutoff, CLEANUP_BATCH_SIZE); // own transaction
         total += deleted;
-    } while (deleted == CLEANUP_BATCH_SIZE);
+    } while (deleted == CLEANUP_BATCH_SIZE && Instant.now().isBefore(deadline));
     log.info("Cleanup: removed {} completed tasks older than {} days", total, CLEANUP_RETENTION_DAYS);
 }
 ```
@@ -1561,11 +1614,11 @@ public class ReportGenerationHandler implements OutboxTaskHandler<ReportGenerati
         var reportPath = runReportGeneration(payload);
 
         try {
-            reports.save(GeneratedReport.builder()
+            reports.saveAndFlush(GeneratedReport.builder()
                     .idempotencyKey(taskId)
                     .reportPath(reportPath)
                     .build());
-        } catch (DataIntegrityViolationException e) {
+        } catch (DataIntegrityViolationException e) { // saveAndFlush: surface it here, not at commit
             log.info("Task {} was completed concurrently — treating as done", taskId);
         }
     }
@@ -1698,27 +1751,31 @@ day, that is a steady trickle of hour-long delays and duplicate executions.
 The shutdown sequence you want:
 
 1. **Stop taking new work.** Stop the scheduler and the event executor from accepting tasks.
-2. **Let in-flight tasks finish**, up to a deadline shorter than Kubernetes'
-   `terminationGracePeriodSeconds` (30s by default).
+2. **Let in-flight tasks finish**, up to a deadline that fits inside Kubernetes'
+   `terminationGracePeriodSeconds` (30s by default — raise it if your tasks need longer).
 3. **Hand back what didn't finish.** Anything still running at the deadline: flip it back to
    `PENDING` (one `UPDATE` by id), so another pod picks it up in a second rather than in an hour.
 
 Spring Boot gives you most of this with configuration:
 
 ```yaml
+# Kubernetes: terminationGracePeriodSeconds: 60
 server:
   shutdown: graceful
 spring:
   lifecycle:
-    timeout-per-shutdown-phase: 25s
+    timeout-per-shutdown-phase: 15s
   task:
     scheduling:
       shutdown:
         await-termination: true
-        await-termination-period: 20s
+        await-termination-period: 15s
 ```
 
-…plus `setWaitForTasksToCompleteOnShutdown(true)` on the `outboxExecutor` from Part 2.5. The
+…plus `setWaitForTasksToCompleteOnShutdown(true)` and a 15-second await on the `outboxExecutor`
+from Part 2.5. These waits run largely one after another, not in parallel, so **add them up**:
+15 + 15 + 15 = 45 seconds has to fit inside the grace period, or the pod is killed mid-shutdown and
+leaves exactly the `PROCESSING` rows you were trying to avoid. The
 drain loop from Part 7.5 should also check a "shutting down" flag between batches, so a pod with
 a backlog stops claiming new batches as soon as it is told to stop.
 
@@ -1727,14 +1784,23 @@ a backlog stops claiming new batches as soon as it is told to stop.
 Payloads live in the table for minutes, hours, or — for a `FAILED` task waiting on a retry — days.
 That means **the code that reads a payload is often newer than the code that wrote it**. Rename a
 field in `ReportGenerationPayload`, deploy, and every task submitted by the previous version fails
-to deserialize — then burns through its retries, because retrying won't fix a schema mismatch.
+to deserialize.
+
+Where it fails matters. With the payload mapped as a typed JSON column (`@JdbcTypeCode(SqlTypes.JSON)`
+from Part 1), Hibernate deserializes it **while loading the entity — inside the claim query**. The
+claim transaction rolls back, `retry_count` never increases, and the same poison row fails again
+on every tick. With `LIMIT 1`, or in every batch that contains it, it stalls the outbox for
+everyone. The multi-type dispatcher from Part 6 is safer: it stores the payload as raw JSON and
+deserializes it in the handler path, so a bad payload becomes an ordinary `FAILED` task.
 
 Treat the payload as a contract with your past self:
 
 - Make changes additive: add new fields as optional, and don't rename or remove a field until no
   row with the old shape can still be `PENDING` or `FAILED`.
-- Configure the reader to be tolerant (`FAIL_ON_UNKNOWN_PROPERTIES = false`), so a rollback can
-  still read rows written by the newer version.
+- Make the reader tolerant — `@JsonIgnoreProperties(ignoreUnknown = true)` on the payload class —
+  so a rollback can still read rows written by the newer version. (Setting
+  `spring.jackson.deserialization.fail-on-unknown-properties` is not enough: Hibernate's JSON
+  mapping uses its own mapper unless you configure `hibernate.type.json_format_mapper`.)
 - For a real breaking change, add a `payload_version` column (or a new task type) and keep the old
   handler until the old rows are gone.
 

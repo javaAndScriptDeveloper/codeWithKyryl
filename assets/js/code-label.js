@@ -25,6 +25,7 @@
             tag.className = 'code-lang';
             tag.textContent = label;
             block.appendChild(tag);
+            block.classList.add('has-lang');
         });
     }
 

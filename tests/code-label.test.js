@@ -21,3 +21,26 @@ test('gives no label to blocks without a real language', () => {
 test('falls back to the upper-cased name for languages it does not know', () => {
     assert.equal(CodeLabel.languageLabel('language-hcl highlighter-rouge'), 'HCL');
 });
+
+function fakeBlock(className) {
+    const classes = new Set(className.split(' '));
+    const children = [];
+    return {
+        className,
+        classList: { add: (c) => classes.add(c), contains: (c) => classes.has(c) },
+        querySelector: (sel) => (sel === 'pre' ? {} : children.find((c) => c.className === 'code-lang') || null),
+        appendChild: (c) => children.push(c),
+        children
+    };
+}
+
+test('marks only labelled blocks, so unlabelled ones keep normal padding', () => {
+    global.document = { createElement: () => ({}) };
+    const java = fakeBlock('language-java highlighter-rouge');
+    const plain = fakeBlock('language-plaintext highlighter-rouge');
+    CodeLabel.mount({ querySelectorAll: () => [java, plain] });
+
+    assert.equal(java.classList.contains('has-lang'), true);
+    assert.equal(plain.classList.contains('has-lang'), false);
+    delete global.document;
+});

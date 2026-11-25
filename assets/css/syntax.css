@@ -124,4 +124,4 @@
   text-transform: uppercase;
   pointer-events: none;
 }
-.post-content div.highlighter-rouge pre.highlight { padding-top: 2rem; }
+.post-content div.highlighter-rouge.has-lang pre.highlight { padding-top: 2rem; }
