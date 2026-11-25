@@ -456,7 +456,7 @@ public class ReportGenerationService {
 public record ReportGenerationTaskSubmittedEvent(UUID taskId) {}
 ```
 
-The listener reacts and triggers processing immediately:
+The listener reacts after the commit, **on its own thread pool**:
 
 ```java
 @Component
@@ -465,6 +465,7 @@ public class ReportGenerationTaskEventListener {
 
     private final ReportGenerationTaskService taskService;
 
+    @Async("outboxExecutor")
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onTaskSubmitted(ReportGenerationTaskSubmittedEvent event) {
         taskService.fetchAndProcess();
@@ -472,38 +473,189 @@ public class ReportGenerationTaskEventListener {
 }
 ```
 
-### The Classic Mistake
+`@Async` is not decoration. An `AFTER_COMMIT` listener without it runs **synchronously on the
+thread that committed** — the HTTP request thread. The user's "202 Accepted" now waits for the
+whole report to be generated. Worse, at that point the committed transaction's resources are
+still bound to the thread: Spring's own documentation warns that data access from an
+after-commit callback still "participates" in the finished transaction, and nothing will commit
+it unless the code explicitly asks for `REQUIRES_NEW`. Moving the listener onto a separate thread
+fixes both at once.
 
-The most common error here is using `@EventListener` instead of
-`@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)`.
+### A Dedicated Thread Pool, Not the Default One
 
-`@EventListener` fires the moment `publishEvent()` is called — which is **inside the open
-transaction**, before the `INSERT` has committed. The listener calls `fetchAndProcess()`,
-which queries the database for the task by ID. The row does not exist yet. The task is silently
-skipped, the event is lost, and you're left wondering why processing never started — even though
-the scheduler eventually picks it up seconds later and everything looks fine in the logs.
+`@Async` without a name uses Spring Boot's shared `applicationTaskExecutor` — shared with every
+other `@Async` method in the app, and with an effectively unbounded queue by default. An event
+flood would quietly turn into an in-memory backlog that disappears on the next restart. Give the
+outbox its own bounded pool:
 
 ```java
-// ❌ fires inside the transaction — entity not visible to other connections yet
+@Configuration
+@EnableAsync
+public class OutboxExecutorConfig {
+
+    @Bean("outboxExecutor")
+    public ThreadPoolTaskExecutor outboxExecutor() {
+        var executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(4);
+        executor.setMaxPoolSize(4);
+        executor.setQueueCapacity(200);                 // bounded: overflow is rejected, not buffered forever
+        executor.setThreadNamePrefix("outbox-");        // readable thread dumps and logs
+        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.DiscardPolicy());
+        executor.setWaitForTasksToCompleteOnShutdown(true);
+        executor.setAwaitTerminationSeconds(30);
+        return executor;
+    }
+}
+```
+
+Discarding on overflow is safe here *because the row is in the database*: the event is only a
+latency optimisation, and the poller picks up anything the event path dropped. Never use
+`CallerRunsPolicy` for this pool — the "caller" is the request thread you were trying to free.
+
+### The Classic Mistake
+
+The most common error is using `@EventListener` instead of
+`@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)`. What goes wrong depends on
+whether the listener is asynchronous:
+
+- **Plain `@EventListener`** fires the moment `publishEvent()` is called — synchronously, on the
+  same thread, **inside the still-open transaction**. `fetchAndProcess()` joins that transaction,
+  so it *does* see the uncommitted row — and it claims and runs the task right there. The report
+  is generated inside the submit transaction (the exact antipattern from Part 2), the request
+  hangs until it finishes, and if the submit transaction then rolls back, you have executed a
+  task that officially never existed.
+- **`@Async` + `@EventListener`** runs on another thread with another connection, before the
+  commit. The row is not visible yet, the fetch finds nothing, and the event is silently wasted.
+  The scheduler picks the task up a second later, so the logs look fine — you have just lost the
+  latency benefit without noticing.
+
+```java
+// ❌ fires inside the open transaction (or before it commits, if @Async)
 @EventListener
 public void onTaskSubmitted(ReportGenerationTaskSubmittedEvent event) {
     taskService.fetchAndProcess();
 }
 
-// ✅ fires after COMMIT — entity is visible, fetch succeeds
+// ✅ fires after COMMIT, on the outbox pool — the row is visible and the caller is free
+@Async("outboxExecutor")
 @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 public void onTaskSubmitted(ReportGenerationTaskSubmittedEvent event) {
     taskService.fetchAndProcess();
 }
 ```
 
-`AFTER_COMMIT` guarantees the listener runs only after the transaction that published the event
-has fully committed. By that point the row is visible to all connections and the fetch will
-find it.
-
 The scheduler remains unchanged — it acts as the recovery mechanism for any tasks the event
 listener missed. The two approaches complement each other: events for latency, polling for
 reliability.
+
+### Going Further: the Zero-Select Outbox
+
+The event above still costs a round trip. It only says "something new arrived", so the worker has
+to `SELECT` to find out what — and with `ORDER BY created_at` it may not even pick the task that
+triggered it. When latency really matters, skip the read altogether: **put everything needed to
+execute the task into the event**, execute it straight from memory, and write back only the
+result.
+
+```mermaid
+sequenceDiagram
+    participant S as Service
+    participant DB as PostgreSQL
+    participant X as outboxExecutor
+
+    S->>DB: INSERT task (PROCESSING, heartbeat_at = now)
+    S->>DB: COMMIT
+    S-)X: event(taskId, payload) — AFTER_COMMIT
+    X->>X: generateReport(payload)
+    X->>DB: UPDATE state = COMPLETED WHERE id = ?
+    Note over DB,X: no SELECT anywhere on the happy path
+```
+
+This uses the `PROCESSING` state and heartbeat from Parts 3 and 5. The row is inserted already
+`PROCESSING`, with a fresh `heartbeat_at` acting as a lease. That detail is what keeps it correct:
+if the row were inserted `PENDING`, the poller could claim it while the event path is already
+executing it, and the task would run twice.
+
+```java
+public record ReportRequestedEvent(UUID taskId, ReportGenerationPayload payload) {}
+
+@Transactional
+public void submit(ReportGenerationCommand command) {
+    var payload = ReportGenerationPayload.builder()
+            .from(command.getFrom())
+            .to(command.getTo())
+            .build();
+    var entity = repository.save(ReportGenerationEntity.builder()
+            .state(TaskState.PROCESSING)
+            .heartbeatAt(Instant.now())   // lease: the poller leaves this row alone
+            .payload(payload)
+            .build());
+    eventPublisher.publishEvent(new ReportRequestedEvent(entity.getId(), payload));
+}
+```
+
+```java
+@Async("outboxExecutor")
+@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+public void onReportRequested(ReportRequestedEvent event) {
+    try (var heartbeat = heartbeatFactory.start(event.taskId())) {
+        generateReport(event.payload());
+        repository.markCompleted(event.taskId());              // UPDATE ... WHERE id = :id
+    } catch (Exception e) {
+        repository.markFailed(event.taskId(), e.getMessage()); // the poller retries it later
+    }
+}
+```
+
+Every failure mode lands back in the classic path. If the listener throws, the task is `FAILED`
+and the poller retries it with backoff. If the app dies mid-execution, the heartbeat stops and the
+stuck-task recovery job resets it. If the pool rejects the event, the row sits as `PROCESSING`
+with a lease that is never renewed — either flip it back to `PENDING` in the rejection handler
+(one `UPDATE` by id) or accept that it waits for recovery. That last case is why the zero-select
+path wants a short recovery threshold.
+
+**The trade-off: who controls the amount of work.** A polling outbox *pulls*. It decides how many
+tasks to take and how fast, so its load is bounded by design no matter what happens upstream. A
+zero-select outbox is *pushed*: work arrives at the rate requests arrive. A traffic spike becomes
+an execution spike, and the only brakes are the pool size and the queue capacity — once they are
+full you are rejecting and falling back to polling anyway. Use zero-select for latency-sensitive,
+moderate-volume work with a bounded pool; keep the poller for everything else, and always as the
+safety net.
+
+**Squeezing out the last write.** For maximum throughput you can go one step further and stop
+writing each completion individually: collect completed ids in memory and flush them as one
+`UPDATE` every few hundred milliseconds.
+
+```java
+@Component
+@RequiredArgsConstructor
+public class CompletionBuffer {
+
+    private final ConcurrentLinkedQueue<UUID> completed = new ConcurrentLinkedQueue<>();
+    private final ReportGenerationRepository repository;
+
+    public void add(UUID taskId) {
+        completed.add(taskId);
+    }
+
+    @Scheduled(fixedDelay = 200)
+    @PreDestroy                                   // flush what we can on a graceful shutdown
+    public void flush() {
+        var ids = new ArrayList<UUID>();
+        for (UUID id; ids.size() < 1_000 && (id = completed.poll()) != null; ) {
+            ids.add(id);
+        }
+        if (!ids.isEmpty()) {
+            repository.markCompleted(ids);        // UPDATE ... SET state = 'COMPLETED' WHERE id IN (:ids)
+        }
+    }
+}
+```
+
+Be precise about what this costs. A crash loses the buffer — not the tasks, but the *record that
+they finished*. Those rows stay `PROCESSING`, recovery resets them, and they execute **again**.
+That is only acceptable when every handler is idempotent (Part 10). Write failures immediately
+rather than buffering them: they are rare, and their error message is the one thing you can't
+reconstruct later.
 
 ---
 
