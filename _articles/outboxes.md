@@ -1562,16 +1562,11 @@ An outbox is also one of the highest-churn tables you will ever own: every row i
 updated two or three times, and deleted. Each of those leaves a dead tuple behind for autovacuum.
 The defaults (vacuum when ~20% of the table is dead) are tuned for tables that mostly grow, so on
 a busy outbox they let bloat build up between runs. Make autovacuum more aggressive for this one
-table:
+table — Postgres lets you override the autovacuum settings per table with `ALTER TABLE ... SET (...)`,
+so the rest of the database keeps its defaults.
 
-```sql
-ALTER TABLE outbox_tasks SET (
-    autovacuum_vacuum_scale_factor  = 0.01,   -- vacuum after ~1% dead tuples, not 20%
-    autovacuum_analyze_scale_factor = 0.02
-);
-```
-
-How long to retain: I've seen everything from 1 day to 3 months. If you're unsure — keep longer.
+How long to retain: I've seen everything from deleting a task as soon as it is processed to
+keeping it for a month afterwards. If you're unsure — keep longer.
 The cost of retaining old rows is a slightly larger table. The cost of deleting them too early
 is losing your debugging history on the day you need it most.
 
