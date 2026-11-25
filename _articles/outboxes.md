@@ -15,6 +15,8 @@ faq:
     answer: "No. The outbox pattern works with just a relational database. A scheduled worker can poll the outbox table directly using `SELECT ... FOR UPDATE SKIP LOCKED`. A broker like Kafka is optional — you can publish from the outbox, but PostgreSQL alone is enough for reliable async execution."
   - question: "How do multiple workers avoid processing the same outbox row?"
     answer: "Use `SELECT ... FOR UPDATE SKIP LOCKED` when claiming rows. Each worker locks the rows it picks and `SKIP LOCKED` makes other workers skip already-locked rows instead of blocking, so multiple instances can poll the same table concurrently without double-processing."
+  - question: "Can I send a Kafka message or call an API inside a @Transactional method?"
+    answer: "You shouldn't. If Kafka or the remote service is slow, every transaction stays open for as long as the call takes, holding a pooled connection and row locks, so a degraded dependency turns into a database outage. Transaction duration must never depend on an external resource. It is also still a dual write: the message can be sent and the transaction then roll back. Write the intent to an outbox table in the transaction and publish after commit from a worker."
   - question: "How do you handle failed tasks and retries in an outbox?"
     answer: "Give each task a state machine (PENDING → PROCESSING → COMPLETED/FAILED), a retry counter, and a `next_attempt_at` timestamp for exponential backoff. A heartbeat / lease timestamp lets you reclaim tasks orphaned by a crashed worker, and a max-retry threshold moves poison messages to a dead-letter state for manual inspection."
 ---
@@ -49,7 +51,9 @@ Stack: **Java, Spring Boot, PostgreSQL**.
 
 - The **Transactional Outbox Pattern** fixes the dual-write problem by writing a task row in the **same DB transaction** as your domain change, then executing it from a background worker.
 - Poll the outbox table with `SELECT ... FOR UPDATE SKIP LOCKED` so multiple workers can run concurrently without double-processing.
-- Production-grade requires more than the basic idea: a **state machine**, **retries with backoff**, **heartbeats/leases** to recover crashed workers, **ordering** guarantees, and **monitoring** of queue depth.
+- **Never** send to Kafka or call another service inside a DB transaction: transaction time must never depend on an external resource.
+- Production-grade requires more than the basic idea: a **state machine**, **retries with backoff and jitter**, **heartbeats/leases** to recover crashed workers, **ordering** guarantees, a deliberate **fetch strategy**, **batched cleanup**, and **monitoring** of queue depth.
+- For low latency, wake workers with an `AFTER_COMMIT` event on a **dedicated thread pool** — or go **zero-select** and ship the payload in the event, trading control over load for speed.
 - You don't need Kafka — **PostgreSQL alone** is enough for reliable async execution.
 </div>
 
@@ -1417,7 +1421,10 @@ Your outbox is an operational table. Every fetch query scans it. Old rows are de
 The rule: only delete **`COMPLETED`** tasks. `FAILED` tasks are your audit trail. Leave them alone.
 Handle them manually or via a separate ops process when needed.
 
+The obvious implementation is one `DELETE` for everything older than the retention window:
+
 ```java
+// ❌ fine on day one, dangerous on the day the job was broken for a week
 @Modifying
 @Transactional
 @Query("""
@@ -1431,16 +1438,72 @@ int deleteByStateInAndUpdatedAtBefore(
 );
 ```
 
+On PostgreSQL, deleting a large number of rows in **one transaction** is expensive in ways that
+don't show up in the query time:
+
+- **WAL growth.** Every deleted row is written to the write-ahead log (often with full-page
+  images). Ten million deleted rows means gigabytes of WAL appearing in minutes: forced
+  checkpoints, disk pressure on the primary, archiving and replicas falling behind while they
+  catch up, and logical-replication consumers stuck decoding one enormous transaction.
+- **Long locks and an old snapshot.** One huge transaction holds row locks on everything it
+  touched, and keeps autovacuum from cleaning up anything newer than its snapshot — across the
+  whole database, for as long as it runs.
+- **All or nothing.** If it fails after 20 minutes, everything rolls back and the next run starts
+  from zero with an even bigger pile.
+
+Delete in **small portions, in a loop, each portion in its own short transaction**. I usually
+work with around 100k rows per transaction; tune it so one batch takes a second or two on your
+hardware. Batching doesn't make the total WAL smaller — the same rows are deleted either way — it
+spreads it out, so checkpoints, archiving and replicas keep up, locks are short, and a failure
+only loses the current batch.
+
+```java
+@Modifying
+@Transactional
+@Query(nativeQuery = true, value = """
+    DELETE FROM outbox_tasks
+     WHERE id IN (
+           SELECT id FROM outbox_tasks
+            WHERE state = 'COMPLETED'
+              AND updated_at < :before
+            LIMIT :batchSize)
+    """)
+int deleteCompletedBatch(@Param("before") Instant before, @Param("batchSize") int batchSize);
+```
+
 ```java
 private static final int CLEANUP_RETENTION_DAYS = 30;
+private static final int CLEANUP_BATCH_SIZE = 100_000;
 
-@Transactional
-public void cleanup() {
+@Scheduled(cron = "0 0 * * * *")
+@SchedulerLock(name = "outbox-cleanup", lockAtMostFor = "50m")
+public void cleanup() {                       // deliberately NOT @Transactional
     var cutoff = Instant.now().minus(CLEANUP_RETENTION_DAYS, ChronoUnit.DAYS);
-    int deleted = repository.deleteByStateInAndUpdatedAtBefore(
-            List.of(TaskState.COMPLETED), cutoff);
-    log.info("Cleanup: removed {} completed tasks older than {} days", deleted, CLEANUP_RETENTION_DAYS);
+    int total = 0;
+    int deleted;
+    do {
+        deleted = repository.deleteCompletedBatch(cutoff, CLEANUP_BATCH_SIZE); // own transaction
+        total += deleted;
+    } while (deleted == CLEANUP_BATCH_SIZE);
+    log.info("Cleanup: removed {} completed tasks older than {} days", total, CLEANUP_RETENTION_DAYS);
 }
+```
+
+The outer method must **not** be `@Transactional` — otherwise every batch joins one big
+transaction and you are back to a single huge delete with extra steps. The partial index
+`idx_outbox_cleanup` from Part 8 keeps each batch's inner `SELECT` cheap.
+
+An outbox is also one of the highest-churn tables you will ever own: every row is inserted,
+updated two or three times, and deleted. Each of those leaves a dead tuple behind for autovacuum.
+The defaults (vacuum when ~20% of the table is dead) are tuned for tables that mostly grow, so on
+a busy outbox they let bloat build up between runs. Make autovacuum more aggressive for this one
+table:
+
+```sql
+ALTER TABLE outbox_tasks SET (
+    autovacuum_vacuum_scale_factor  = 0.01,   -- vacuum after ~1% dead tuples, not 20%
+    autovacuum_analyze_scale_factor = 0.02
+);
 ```
 
 How long to retain: I've seen everything from 1 day to 3 months. If you're unsure — keep longer.
@@ -1497,10 +1560,14 @@ public class ReportGenerationHandler implements OutboxTaskHandler<ReportGenerati
 
         var reportPath = runReportGeneration(payload);
 
-        reports.save(GeneratedReport.builder()
-                .idempotencyKey(taskId)
-                .reportPath(reportPath)
-                .build());
+        try {
+            reports.save(GeneratedReport.builder()
+                    .idempotencyKey(taskId)
+                    .reportPath(reportPath)
+                    .build());
+        } catch (DataIntegrityViolationException e) {
+            log.info("Task {} was completed concurrently — treating as done", taskId);
+        }
     }
 }
 ```
@@ -1518,11 +1585,12 @@ The outbox runs silently in the background. When it works, nobody notices. When 
 nobody notices that either — at least not immediately. Stuck tasks pile up. Downstream services
 stop receiving events. By the time someone looks at logs it's been two hours.
 
-Three signals cover the failure space completely, per the Google SRE model:
+The Google SRE book's four golden signals map onto an outbox almost one to one:
 
 - **Latency** — how long does each task take from pick-up to completion? Spike here means the handler is slow or the DB is under pressure.
 - **Throughput** — how many tasks per unit time are finishing? Drops to zero means the scheduler isn't running or no tasks are being claimed.
 - **Error rate** — what fraction of attempts end in failure? Above ~5% means a downstream dependency is degraded and the retry backlog is growing.
+- **Saturation** — how much work is waiting? Queue depth, and even more useful, **the age of the oldest eligible task**: a backlog of 10,000 that is 3 seconds old is healthy, a backlog of 3 that is 40 minutes old is not.
 
 <img src="{{ site.baseurl }}/assets/img/outbox-grafana-dashboard.png" alt="Grafana outbox dashboard" style="max-width: 100%; height: auto; border-radius: 8px; border: 1px solid #e5e7eb;">
 
@@ -1581,6 +1649,12 @@ public class OutboxMetrics {
 The service then just calls `metrics.recordCompleted()` and `metrics.recordFailed()` — no raw
 strings in business logic.
 
+One trap in that gauge: `FAILED` rows that have used up their retries are never deleted (they are
+the audit trail), so counting all `FAILED` rows makes "pending" grow forever and the backlog
+alert eventually fires permanently. Count only rows that can still run (`retry_count < max`),
+and expose exhausted ones as their own `outbox.tasks.dead` gauge — that number should be zero,
+and someone should look whenever it isn't.
+
 After startup, `curl localhost:8080/actuator/prometheus | grep outbox` gives you:
 
 ```
@@ -1609,17 +1683,87 @@ The signal logic is the same; only the numbers change.
 
 ---
 
+## Part 12 — Living With It: Deploys and Payload Changes
+
+Two things will happen to every outbox in its first month in production, and neither shows up in
+a demo.
+
+### Graceful shutdown
+
+Every deploy kills pods that are in the middle of executing tasks. Without care, each of those
+tasks is left `PROCESSING` until the stuck-task recovery job notices — an hour, with the
+threshold from Part 5 — and then runs again from the start. On a team that deploys ten times a
+day, that is a steady trickle of hour-long delays and duplicate executions.
+
+The shutdown sequence you want:
+
+1. **Stop taking new work.** Stop the scheduler and the event executor from accepting tasks.
+2. **Let in-flight tasks finish**, up to a deadline shorter than Kubernetes'
+   `terminationGracePeriodSeconds` (30s by default).
+3. **Hand back what didn't finish.** Anything still running at the deadline: flip it back to
+   `PENDING` (one `UPDATE` by id), so another pod picks it up in a second rather than in an hour.
+
+Spring Boot gives you most of this with configuration:
+
+```yaml
+server:
+  shutdown: graceful
+spring:
+  lifecycle:
+    timeout-per-shutdown-phase: 25s
+  task:
+    scheduling:
+      shutdown:
+        await-termination: true
+        await-termination-period: 20s
+```
+
+…plus `setWaitForTasksToCompleteOnShutdown(true)` on the `outboxExecutor` from Part 2.5. The
+drain loop from Part 7.5 should also check a "shutting down" flag between batches, so a pod with
+a backlog stops claiming new batches as soon as it is told to stop.
+
+### Payload versioning
+
+Payloads live in the table for minutes, hours, or — for a `FAILED` task waiting on a retry — days.
+That means **the code that reads a payload is often newer than the code that wrote it**. Rename a
+field in `ReportGenerationPayload`, deploy, and every task submitted by the previous version fails
+to deserialize — then burns through its retries, because retrying won't fix a schema mismatch.
+
+Treat the payload as a contract with your past self:
+
+- Make changes additive: add new fields as optional, and don't rename or remove a field until no
+  row with the old shape can still be `PENDING` or `FAILED`.
+- Configure the reader to be tolerant (`FAIL_ON_UNKNOWN_PROPERTIES = false`), so a rollback can
+  still read rows written by the newer version.
+- For a real breaking change, add a `payload_version` column (or a new task type) and keep the old
+  handler until the old rows are gone.
+
+```sql
+ALTER TABLE outbox_tasks ADD COLUMN payload_version SMALLINT NOT NULL DEFAULT 1;
+```
+
+---
+
 ## Production Checklist
 
 Before shipping any outbox to production:
 
 ```
+☐ No Kafka sends, HTTP calls or other external I/O inside a DB transaction
+☐ Transaction timeout + idle_in_transaction_session_timeout set as guards
+☐ Fetch trigger chosen deliberately — fixedDelay by default; singleton jobs (cleanup, recovery) locked
+☐ Batch claiming / drain loop with a time budget, not one task per tick
 ☐ Indexes are efficient — partial indexes on PENDING/FAILED and PROCESSING states
 ☐ EXPLAIN ANALYZE confirms index usage on the fetch query
 ☐ Ordering is not a problem — ORDER BY seq or created_at, backed by index
-☐ Processed data cleanup job running, COMPLETED rows removed after retention period
+☐ Event listeners are AFTER_COMMIT and @Async on a dedicated, bounded executor
+☐ Exponential backoff with jitter wired — or confirmed not needed for this use case
+☐ Bulk submissions spread with a jittered execute_at
+☐ Cleanup deletes COMPLETED rows in batches, each in its own transaction
+☐ Autovacuum tuned for the outbox table
 ☐ Idempotency handled inside handlers with side effects
-☐ Exponential backoff wired — or confirmed not needed for this use case
+☐ Graceful shutdown hands unfinished tasks back instead of leaving them PROCESSING
+☐ Payload changes are backward compatible (or versioned)
 ☐ Metrics in place — queue depth, throughput, error rate, latency
 ☐ Alerts configured — backlog, error rate, latency, stuck tasks
 ```
@@ -1653,6 +1797,18 @@ in the source code.
 the Python ecosystem. Celery supports PostgreSQL as a result backend and Redis or RabbitMQ as a
 broker. The `AFTER_COMMIT` pattern from Part 2.5 applies here too — push to Celery only after
 the transaction commits, not inside it.
+
+---
+
+**[Debezium](https://debezium.io/documentation/reference/stable/transformations/outbox-event-router.html)**
+— a different answer to the same problem, worth knowing when the outbox exists only to publish
+events to Kafka. Instead of a worker polling the table, Debezium reads the database's
+write-ahead log (change data capture) and publishes each inserted outbox row to Kafka; its outbox
+event router turns the row into a properly keyed message. There is no polling latency and no
+polling load on the table. The price is operating Kafka Connect and a replication slot — and a
+slot that stops being consumed makes Postgres keep WAL forever, so it needs monitoring of its
+own. It also only covers "publish an event": for "generate a report" or "call this API with
+retries", you still want the task-execution engine this article builds.
 
 ---
 
