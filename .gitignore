@@ -9,3 +9,6 @@ CLAUDE.md
 
 tmp
 assets/og/
+
+# Companion example repos, cloned locally for reference (each is its own git repo)
+examples/

@@ -15,8 +15,10 @@ faq:
     answer: "No. The outbox pattern works with just a relational database. A scheduled worker can poll the outbox table directly using `SELECT ... FOR UPDATE SKIP LOCKED`. A broker like Kafka is optional — you can publish from the outbox, but PostgreSQL alone is enough for reliable async execution."
   - question: "How do multiple workers avoid processing the same outbox row?"
     answer: "Use `SELECT ... FOR UPDATE SKIP LOCKED` when claiming rows. Each worker locks the rows it picks and `SKIP LOCKED` makes other workers skip already-locked rows instead of blocking, so multiple instances can poll the same table concurrently without double-processing."
+  - question: "Can I send a Kafka message or call an API inside a @Transactional method?"
+    answer: "You shouldn't. If Kafka or the remote service is slow, every transaction stays open for as long as the call takes, holding a pooled connection and row locks, so a degraded dependency turns into a database outage. Transaction duration must never depend on an external resource. It is also still a dual write: the message can be sent and the transaction then roll back. Write the intent to an outbox table in the transaction and publish after commit from a worker."
   - question: "How do you handle failed tasks and retries in an outbox?"
-    answer: "Give each task a state machine (PENDING → PROCESSING → COMPLETED/FAILED), a retry counter, and a `next_attempt_at` timestamp for exponential backoff. A heartbeat / lease timestamp lets you reclaim tasks orphaned by a crashed worker, and a max-retry threshold moves poison messages to a dead-letter state for manual inspection."
+    answer: "Give each task a state machine (PENDING → PROCESSING → COMPLETED/FAILED), a retry counter, and a `execute_at` timestamp for exponential backoff. A heartbeat / lease timestamp lets you reclaim tasks orphaned by a crashed worker, and a max-retry threshold moves poison messages to a dead-letter state for manual inspection."
 ---
 
 # The Transactional Outbox Pattern: From a Single Task to a Production-Grade Async Engine
@@ -49,7 +51,9 @@ Stack: **Java, Spring Boot, PostgreSQL**.
 
 - The **Transactional Outbox Pattern** fixes the dual-write problem by writing a task row in the **same DB transaction** as your domain change, then executing it from a background worker.
 - Poll the outbox table with `SELECT ... FOR UPDATE SKIP LOCKED` so multiple workers can run concurrently without double-processing.
-- Production-grade requires more than the basic idea: a **state machine**, **retries with backoff**, **heartbeats/leases** to recover crashed workers, **ordering** guarantees, and **monitoring** of queue depth.
+- **Never** send to Kafka or call another service inside a DB transaction: transaction time must never depend on an external resource.
+- Production-grade requires more than the basic idea: a **state machine**, **retries with backoff and jitter**, **heartbeats/leases** to recover crashed workers, **ordering** guarantees, a deliberate **fetch strategy**, **batched cleanup**, and **monitoring** of queue depth.
+- For low latency, wake workers with an `AFTER_COMMIT` event on a **dedicated thread pool** — or go **zero-select** and ship the payload in the event, trading control over load for speed.
 - You don't need Kafka — **PostgreSQL alone** is enough for reliable async execution.
 </div>
 
@@ -320,6 +324,69 @@ Instead, claim the row in a short transaction by moving it to `PROCESSING`, comm
 lock, and only then execute the outbox action. Record `COMPLETED` or `FAILED` in another short
 transaction afterward. The next section implements that state transition and its recovery path.
 
+### Never Talk to the Outside World Inside a Transaction
+
+The same rule applies far beyond the outbox worker, and it's the single most common way I've seen
+outbox-adjacent code take a service down. It looks harmless:
+
+```java
+// ❌ Kafka send (or an HTTP call, or an S3 upload) inside an open DB transaction
+@Transactional
+public void approveOrder(UUID orderId) {
+    var order = orderRepository.findById(orderId).orElseThrow();
+    order.setStatus(OrderStatus.APPROVED);
+
+    kafkaTemplate.send("order-approved", orderId.toString(), toEvent(order)).get(); // blocks
+    billingClient.notifyApproved(orderId);                                         // blocks
+}
+```
+
+On a good day Kafka acks in 5ms and the billing service answers in 30ms, so nobody notices. On a
+bad day the broker is rebalancing or the billing service is degraded, and every call takes 30
+seconds before it times out. Now **every** in-flight transaction is open for 30 seconds:
+
+- each one holds a pooled connection — with 20 connections and 30-second calls, your whole service
+  can approve 20 orders per 30 seconds, and everything else (including healthy read endpoints)
+  queues for the pool and starts timing out;
+- once it has written (with JPA that may be only at the commit flush, but often earlier), it
+  holds row locks — anything that touches the same orders waits behind them;
+- a long transaction that has written something holds back Postgres' vacuum horizon — dead rows
+  across the whole database can't be cleaned up until it ends, so bloat builds up everywhere, not
+  just in this table.
+
+A degradation in a dependency you don't own just became an outage in a database you do own. **The
+duration of a database transaction must never depend on an external resource.** The transaction
+should only ever wait on the database itself.
+
+It is also still a dual write. If the Kafka send succeeds and the commit then fails (constraint
+violation, serialization failure, the pod is killed), consumers have already seen an
+`order-approved` event for an order that was never approved. Moving the send *after* the commit
+just flips the failure mode: committed, but the event is lost. This is exactly the problem the
+outbox exists to solve — write the intent to the outbox in the transaction, and let a worker talk
+to Kafka afterwards.
+
+Two guards are worth adding even when the code is correct, because the next person to touch it
+may not know the rule:
+
+```java
+@Transactional(timeout = 5) // seconds
+public void approveOrder(UUID orderId) { ... }
+```
+
+Spring's `timeout` does not interrupt a call that is already blocked — it is a deadline checked by
+the database work that follows. Any statement issued after the deadline (including the flush at
+commit) fails with a timeout exception and the transaction rolls back. Treat it as a
+tripwire that turns "slow and silent" into "fails loudly in tests and logs", not as a cure.
+
+```sql
+-- server-side safety net: kill sessions that sit idle inside an open transaction
+ALTER DATABASE app SET idle_in_transaction_session_timeout = '30s';
+```
+
+`idle_in_transaction_session_timeout` is exactly the situation above from Postgres' point of view:
+the session opened a transaction and then went quiet while the application waited on something
+else.
+
 ---
 
 ## Part 2.5 — Reducing Latency with Application Events
@@ -395,7 +462,7 @@ public class ReportGenerationService {
 public record ReportGenerationTaskSubmittedEvent(UUID taskId) {}
 ```
 
-The listener reacts and triggers processing immediately:
+The listener reacts after the commit, **on its own thread pool**:
 
 ```java
 @Component
@@ -404,6 +471,7 @@ public class ReportGenerationTaskEventListener {
 
     private final ReportGenerationTaskService taskService;
 
+    @Async("outboxExecutor")
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onTaskSubmitted(ReportGenerationTaskSubmittedEvent event) {
         taskService.fetchAndProcess();
@@ -411,38 +479,224 @@ public class ReportGenerationTaskEventListener {
 }
 ```
 
-### The Classic Mistake
-
-The most common error here is using `@EventListener` instead of
-`@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)`.
-
-`@EventListener` fires the moment `publishEvent()` is called — which is **inside the open
-transaction**, before the `INSERT` has committed. The listener calls `fetchAndProcess()`,
-which queries the database for the task by ID. The row does not exist yet. The task is silently
-skipped, the event is lost, and you're left wondering why processing never started — even though
-the scheduler eventually picks it up seconds later and everything looks fine in the logs.
+Notice that the listener does not pass `event.taskId()` on. That is deliberate: the event is only
+a **wake-up signal**, and `fetchAndProcess()` claims work exactly as the poller does — the oldest
+eligible task, with `SKIP LOCKED`. The task that triggered the event may not be the one that runs,
+but ordering and claiming stay in one place. If you would rather run *that* task right now, pass
+the id and claim it directly:
 
 ```java
-// ❌ fires inside the transaction — entity not visible to other connections yet
+taskService.process(event.taskId()); // WHERE id = :id AND state = 'PENDING' FOR UPDATE SKIP LOCKED
+```
+
+That gives the submitter the lowest latency, at the price of letting new tasks overtake older
+`PENDING` ones — fine for independent work, wrong if you rely on FIFO (Part 7). The zero-select
+outbox at the end of this part takes the idea to its conclusion and passes the whole payload.
+
+`@Async` is not decoration. An `AFTER_COMMIT` listener without it runs **synchronously on the
+thread that committed** — the HTTP request thread. The user's "202 Accepted" now waits for the
+whole report to be generated. Worse, at that point the committed transaction's resources are
+still bound to the thread: Spring's own documentation warns that data access from an
+after-commit callback still "participates" in the finished transaction, and nothing will commit
+it unless the code explicitly asks for `REQUIRES_NEW`. Moving the listener onto a separate thread
+fixes both at once.
+
+### A Dedicated Thread Pool, Not the Default One
+
+`@Async` without a name uses Spring Boot's shared `applicationTaskExecutor` — shared with every
+other `@Async` method in the app, and with an effectively unbounded queue by default. An event
+flood would quietly turn into an in-memory backlog that disappears on the next restart. Give the
+outbox its own bounded pool:
+
+```java
+@Configuration
+@EnableAsync
+public class OutboxExecutorConfig {
+
+    @Bean("outboxExecutor")
+    public ThreadPoolTaskExecutor outboxExecutor() {
+        var executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(4);
+        executor.setMaxPoolSize(4);
+        executor.setQueueCapacity(200);                 // bounded: overflow is rejected, not buffered forever
+        executor.setThreadNamePrefix("outbox-");        // readable thread dumps and logs
+        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.DiscardPolicy());
+        executor.setWaitForTasksToCompleteOnShutdown(true);
+        executor.setAwaitTerminationSeconds(15);
+        return executor;
+    }
+}
+```
+
+One Spring Boot detail to know before copying this: Boot only auto-configures its
+`applicationTaskExecutor` when you have **not** declared an `Executor` bean yourself. Declare
+`outboxExecutor` and the default disappears — every *unnamed* `@Async` elsewhere in the app quietly
+lands on a different executor (possibly this one, with its discard policy). On Boot 3.5+, set
+`spring.task.execution.mode=force` to keep the auto-configured one; on older versions, declare an
+`applicationTaskExecutor` bean explicitly next to this one.
+
+Discarding on overflow is safe here *because the row is in the database*: the event is only a
+latency optimisation, and the poller picks up anything the event path dropped. Never use
+`CallerRunsPolicy` for this pool — the "caller" is the request thread you were trying to free.
+
+### The Classic Mistake
+
+The most common error is using `@EventListener` instead of
+`@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)`. What goes wrong depends on
+whether the listener is asynchronous:
+
+- **Plain `@EventListener`** fires the moment `publishEvent()` is called — synchronously, on the
+  same thread, **inside the still-open transaction**. `fetchAndProcess()` joins that transaction,
+  so it *does* see the uncommitted row — and it claims and runs the task right there. The report
+  is generated inside the submit transaction (the exact antipattern from Part 2), the request
+  hangs until it finishes, and if the submit transaction then rolls back, you have executed a
+  task that officially never existed.
+- **`@Async` + `@EventListener`** runs on another thread with another connection, before the
+  commit. The row is not visible yet, the fetch finds nothing, and the event is silently wasted.
+  The scheduler picks the task up a second later, so the logs look fine — you have just lost the
+  latency benefit without noticing.
+
+```java
+// ❌ fires inside the open transaction (or before it commits, if @Async)
 @EventListener
 public void onTaskSubmitted(ReportGenerationTaskSubmittedEvent event) {
     taskService.fetchAndProcess();
 }
 
-// ✅ fires after COMMIT — entity is visible, fetch succeeds
+// ✅ fires after COMMIT, on the outbox pool — the row is visible and the caller is free
+@Async("outboxExecutor")
 @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 public void onTaskSubmitted(ReportGenerationTaskSubmittedEvent event) {
     taskService.fetchAndProcess();
 }
 ```
 
-`AFTER_COMMIT` guarantees the listener runs only after the transaction that published the event
-has fully committed. By that point the row is visible to all connections and the fetch will
-find it.
-
 The scheduler remains unchanged — it acts as the recovery mechanism for any tasks the event
 listener missed. The two approaches complement each other: events for latency, polling for
 reliability.
+
+### Going Further: the Zero-Select Outbox
+
+The event above still costs a round trip. It only says "something new arrived", so the worker has
+to `SELECT` to find out what — and with `ORDER BY created_at` it may not even pick the task that
+triggered it. When latency really matters, skip the read altogether: **put everything needed to
+execute the task into the event**, execute it straight from memory, and write back only the
+result.
+
+```mermaid
+sequenceDiagram
+    participant S as Service
+    participant DB as PostgreSQL
+    participant X as outboxExecutor
+
+    S->>DB: INSERT task (PROCESSING, heartbeat_at = now)
+    S->>DB: COMMIT
+    S-)X: event(taskId, payload) — AFTER_COMMIT
+    X->>X: generateReport(payload)
+    X->>DB: UPDATE state = COMPLETED WHERE id = ?
+    Note over DB,X: no SELECT anywhere on the happy path
+```
+
+This uses the `PROCESSING` state and heartbeat from Parts 3 and 5. The row is inserted already
+`PROCESSING`, with a fresh `heartbeat_at` acting as a lease. That detail is what keeps it correct:
+if the row were inserted `PENDING`, the poller could claim it while the event path is already
+executing it, and the task would run twice.
+
+```java
+public record ReportRequestedEvent(UUID taskId, Instant leasedAt, ReportGenerationPayload payload) {}
+
+@Transactional
+public void submit(ReportGenerationCommand command) {
+    var payload = ReportGenerationPayload.builder()
+            .from(command.getFrom())
+            .to(command.getTo())
+            .build();
+    var leasedAt = Instant.now().truncatedTo(ChronoUnit.MICROS); // Postgres stores microseconds
+    var entity = repository.save(ReportGenerationEntity.builder()
+            .state(TaskState.PROCESSING)
+            .heartbeatAt(leasedAt)        // lease: the poller leaves this row alone
+            .payload(payload)
+            .build());
+    eventPublisher.publishEvent(new ReportRequestedEvent(entity.getId(), leasedAt, payload));
+}
+```
+
+```java
+@Async("outboxExecutor")
+@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+public void onReportRequested(ReportRequestedEvent event) {
+    // UPDATE ... SET heartbeat_at = now()
+    //  WHERE id = :id AND state = 'PROCESSING' AND heartbeat_at = :leasedAt
+    if (repository.renewLease(event.taskId(), event.leasedAt()) == 0) {
+        return; // the event waited too long: recovery already handed the task to the poller
+    }
+    try (var heartbeat = heartbeatFactory.start(event.taskId())) {
+        generateReport(event.payload());
+        repository.markCompleted(event.taskId());              // UPDATE ... WHERE id = :id
+    } catch (Exception e) {
+        repository.markFailed(event.taskId(), e.getMessage()); // the poller retries it later
+    }
+}
+```
+
+The `renewLease` check at the start matters more than it looks. The lease is set at insert, but
+the heartbeat only starts once a thread picks the event up. If the event sits in the executor
+queue longer than the recovery threshold, the recovery job resets the row to `PENDING`, a poller
+claims it — and then the queued event would run it a second time. The conditional update turns
+that race into a no-op: whoever no longer owns the original lease backs off.
+
+Every failure mode lands back in the classic path. If the listener throws, the task is `FAILED`
+and the poller retries it with backoff. If the app dies mid-execution, the heartbeat stops and the
+stuck-task recovery job resets it. If the pool rejects the event, the row sits as `PROCESSING`
+with a lease that is never renewed and waits for recovery — because of the lease check, a short
+recovery threshold for these rows is safe. (Handing it straight back to `PENDING` on rejection
+needs the task id, which an `@Async` rejection handler doesn't get; submit to the executor
+yourself and catch `TaskRejectedException` if you want that.)
+
+**The trade-off: who controls the amount of work.** A polling outbox *pulls*. It decides how many
+tasks to take and how fast, so its load is bounded by design no matter what happens upstream. A
+zero-select outbox is *pushed*: work arrives at the rate requests arrive. A traffic spike becomes
+an execution spike, and the only brakes are the pool size and the queue capacity — once they are
+full you are rejecting and falling back to polling anyway. Use zero-select for latency-sensitive,
+moderate-volume work with a bounded pool; keep the poller for everything else, and always as the
+safety net.
+
+**Squeezing out the last write.** For maximum throughput you can go one step further and stop
+writing each completion individually: collect completed ids in memory and flush them as one
+`UPDATE` every few hundred milliseconds.
+
+```java
+@Component
+@RequiredArgsConstructor
+public class CompletionBuffer {
+
+    private final ConcurrentLinkedQueue<UUID> completed = new ConcurrentLinkedQueue<>();
+    private final ReportGenerationRepository repository;
+
+    public void add(UUID taskId) {
+        completed.add(taskId);
+    }
+
+    @Scheduled(fixedDelay = 200)
+    @PreDestroy                                   // flush what we can on a graceful shutdown
+    public void flush() {
+        var ids = new ArrayList<UUID>();
+        for (UUID id; ids.size() < 1_000 && (id = completed.poll()) != null; ) {
+            ids.add(id);
+        }
+        if (!ids.isEmpty()) {
+            repository.markCompleted(ids);        // UPDATE ... SET state = 'COMPLETED' WHERE id IN (:ids)
+        }
+    }
+}
+```
+
+The shutdown flush is best effort — anything still in the buffer after it, or added after the
+bean is destroyed, is simply re-run later. Be precise about what this costs. A crash loses the buffer — not the tasks, but the *record that
+they finished*. Those rows stay `PROCESSING`, recovery resets them, and they execute **again**.
+That is only acceptable when every handler is idempotent (Part 10). Write failures immediately
+rather than buffering them: they are rare, and their error message is the one thing you can't
+reconstruct later.
 
 ---
 
@@ -452,16 +706,16 @@ reliability.
 stateDiagram-v2
     [*] --> PENDING: submit()
 
-    PENDING --> PROCESSING: worker claims task\n(TX1 commits)
+    PENDING --> PROCESSING: worker claims task<br/>(TX1 commits)
 
-    PROCESSING --> COMPLETED: generateReport() succeeds\n(TX2 commits)
-    PROCESSING --> FAILED: generateReport() throws\n(TX2 commits)
-    PROCESSING --> PENDING: app crash detected\nstuck-task recovery job resets
+    PROCESSING --> COMPLETED: generateReport() succeeds<br/>(TX2 commits)
+    PROCESSING --> FAILED: generateReport() throws<br/>(TX2 commits)
+    PROCESSING --> PENDING: app crash detected<br/>stuck-task recovery job resets
 
-    FAILED --> PROCESSING: retry eligible\n(retryCount ≤ MAX and executeAt ≤ now)
-    FAILED --> [*]: retryCount > MAX\n(dead — manual ops)
+    FAILED --> PROCESSING: retry eligible<br/>(retryCount < MAX and executeAt ≤ now)
+    FAILED --> [*]: retryCount ≥ MAX<br/>(dead — manual ops)
 
-    COMPLETED --> [*]: cleanup job removes\nafter retention period
+    COMPLETED --> [*]: cleanup job removes<br/>after retention period
 ```
 
 Outbox actions should not run under an open database transaction. The locked-transaction approach
@@ -567,7 +821,7 @@ attempts something is genuinely broken and needs eyes on it, not another retry.
 @Query("""
     SELECT t FROM ReportGenerationEntity t
     WHERE t.state IN :states
-      AND t.retryCount <= :maxRetryCount
+      AND t.retryCount < :maxRetryCount
     ORDER BY t.createdAt ASC
     LIMIT 1
     """)
@@ -634,8 +888,38 @@ private void markFailed(ReportGenerationEntity task, Exception e) {
 }
 ```
 
-The scheduler keeps running at the same rate. It just skips tasks whose window hasn't opened.
-Failed tasks sit quietly until their time comes, then re-enter naturally.
+The fetch query gains one condition — `AND t.executeAt <= :now` — and the scheduler keeps running
+at the same rate. It just skips tasks whose window hasn't opened. Failed tasks sit quietly until
+their time comes, then re-enter naturally.
+
+### Jitter: Flatten the Load Before It Hits You
+
+A fixed backoff schedule has a nasty property: tasks that failed together retry together. If the
+email provider was down for two minutes, the 3,000 tasks that failed in that window all get
+`execute_at = failed_at + 1 minute` — and hit the provider again as one synchronized wave the
+moment it comes back. Add randomness to every delay so the wave spreads out:
+
+```java
+private static Instant nextAttempt(Duration baseDelay) {
+    long jitterMillis = ThreadLocalRandom.current().nextLong(baseDelay.toMillis() / 2 + 1);
+    return Instant.now().plus(baseDelay).plusMillis(jitterMillis); // base + up to 50%
+}
+```
+
+The same idea applies on the way **in**. Architecturally, an async engine wants a flat, steady
+load — not big, sudden spikes. A nightly import that submits 200,000 tasks in one transaction
+makes all of them eligible at the same millisecond; every worker on every pod saturates, the
+downstream system gets the full burst, and your latency dashboards light up for work that nobody
+was waiting for. When a task is not urgent, give it a jittered `execute_at` at submit time:
+
+```java
+// bulk / non-urgent submission: spread over the next 10 minutes instead of "all now"
+entity.setExecuteAt(Instant.now().plusMillis(
+        ThreadLocalRandom.current().nextLong(Duration.ofMinutes(10).toMillis())));
+```
+
+The total amount of work is unchanged; it is just spread out over time. User-facing tasks keep
+`execute_at = now()`; batch work gets a jitter window sized to how long it can afford to wait.
 
 ---
 
@@ -730,7 +1014,7 @@ The repository method carries its own `@Transactional` — no need to wrap the c
 ```java
 @Modifying
 @Transactional
-@Query("UPDATE ReportGenerationTaskEntity t SET t.heartbeatAt = :now WHERE t.id = :id")
+@Query("UPDATE ReportGenerationEntity t SET t.heartbeatAt = :now WHERE t.id = :id")
 void updateHeartbeatAt(@Param("id") UUID id, @Param("now") Instant now);
 ```
 
@@ -783,8 +1067,10 @@ The recovery job uses `heartbeat_at` instead of `updated_at`:
 @Query("UPDATE ReportGenerationEntity t SET t.heartbeatAt = :now WHERE t.id = :id")
 void updateHeartbeatAt(@Param("id") UUID id, @Param("now") Instant now);
 
-Optional<ReportGenerationEntity> findFirstByStateAndHeartbeatAtLessThan(
-        TaskState state, Instant threshold);
+@SkipLocked
+@Lock(LockModeType.PESSIMISTIC_WRITE)   // two recovery runs never reset the same task
+Optional<ReportGenerationEntity> findFirstByStateAndHeartbeatAtLessThanOrderByCreatedAt(
+        TaskState state, Instant heartbeatAt);
 ```
 
 `updated_at` reflects when the task state last changed. `heartbeat_at` reflects whether the
@@ -808,7 +1094,7 @@ flowchart TB
 
     subgraph after["✅ After — one table, handler per type"]
         direction TB
-        OT[(outbox_tasks\ntask_type column)] --> D[Dispatcher]
+        OT[(outbox_tasks<br/>task_type column)] --> D[Dispatcher]
         D --> H1[ReportHandler]
         D --> H2[EmailHandler]
         D --> H3[WebhookHandler]
@@ -940,7 +1226,7 @@ sort by `created_at ASC` in your fetch query:
 @Query("""
     SELECT t FROM OutboxTaskEntity t
     WHERE t.state IN :states
-      AND t.retryCount <= :maxRetryCount
+      AND t.retryCount < :maxRetryCount
       AND t.executeAt <= :now
     ORDER BY t.createdAt ASC
     LIMIT 1
@@ -995,7 +1281,146 @@ instance's clock said.
 
 Keep `created_at` for observability. Use `seq` for ordering.
 
+One caveat that bites people who rely on this too hard: a sequence value is assigned at `INSERT`,
+not at `COMMIT`. Transaction A can take `seq = 100`, transaction B takes `seq = 101` and commits
+first — for a moment the worker sees 101 but not 100. `seq` gives you a stable, clock-independent
+order; it does not, on its own, give you "never process 101 before 100". If that is a hard
+requirement for one entity, process that entity's tasks one at a time (for example, skip a task
+while an older task for the same key is still `PENDING` or `PROCESSING`).
+
 If strict FIFO matters in your system — don't forget this.
+
+---
+
+## Part 7.5 — Fetch Strategies: When to Poll and How Much to Take
+
+So far the worker has been a `@Scheduled(fixedDelay = 1000)` that takes one task per tick. That is
+fine for a demo and almost never what you want in production. Two decisions matter: **what
+triggers a run**, and **how much work one run takes**.
+
+### What triggers a run
+
+| Trigger | Spring | Behaviour | Good for |
+|---|---|---|---|
+| Fixed delay | `@Scheduled(fixedDelay = 1000)` | next run starts N ms *after the previous one finished* | most outboxes — load-aware by design |
+| Fixed rate | `@Scheduled(fixedRate = 1000)` | runs are *scheduled* every N ms, regardless of how long they take | steady-cost jobs (metrics, heartbeats) |
+| Cron | `@Scheduled(cron = "0 */5 * * * *")` | wall-clock times | cleanup, reports, anything tied to "nightly" |
+| Threshold | your own trigger | run when backlog ≥ N rows or the oldest task is older than T | downstreams that prefer batches (bulk APIs) |
+
+Choosing between them is not cosmetic. With `fixedRate`, a run that takes longer than the period
+is followed **immediately** by the next one, so a slow downstream turns a 1-second poller into a
+tight loop that never rests. With `fixedDelay`, a slow run simply pushes the next run back — the
+worker naturally slows down when the system is struggling.
+
+### Can two runs overlap?
+
+Within **one** Spring instance, with the default scheduler, the same `@Scheduled` method does not
+run concurrently with itself — even with `fixedRate`, a late run waits for the previous one to
+finish. (If you have switched on virtual threads, Boot uses a different scheduler; re-check this
+assumption against its documentation.) That reassurance
+is where many people stop, and it is the wrong place to stop. Runs *do* overlap when:
+
+- you run **more than one pod** — which is every production deployment; N pods are N concurrent
+  workers;
+- the scheduled method is `@Async`, or hands work to an executor and returns immediately.
+
+Overlap is fine for any job that **locks the rows it works on**, and with a bit of care every
+outbox job can:
+
+- **Fetch-and-process** — that's what `SKIP LOCKED` is for; overlapping workers just split the
+  work, at the cost of some extra queries.
+- **Cleanup** — two cleanup runs deleting the same range are fine when the batch delete is a
+  native query whose inner `SELECT` uses `FOR UPDATE SKIP LOCKED` (Part 9): each run takes rows
+  the other hasn't locked, and neither waits.
+- **Stuck-task recovery** — two recovery runs could both reset the same task, so the recovery
+  query must take a row lock too (`FOR UPDATE SKIP LOCKED`, Part 5). Then only one run gets
+  each stuck row.
+
+For a job that genuinely can't be made row-safe — say, "send the daily summary email" — run
+it on one instance only. The usual tool is **[ShedLock](https://github.com/lukas-krecan/ShedLock)**:
+a small library that makes sure a scheduled task runs on at most one node at a time. Before a
+run, it takes a named lock in a shared store (a table in your own database works fine), and
+other nodes skip that run while the lock is held. `lockAtMostFor` releases the lock even if the
+node holding it dies.
+
+```java
+@Scheduled(cron = "0 0 8 * * *")
+@SchedulerLock(name = "daily-summary", lockAtMostFor = "30m")
+public void sendDailySummary() { ... }
+```
+
+### How much one run takes: the drain loop
+
+Taking one task per tick caps throughput at one task per second per pod, no matter how much
+capacity you have. Taking a batch is better; better still is a run that **keeps fetching until
+the queue is drained**, and only then ends its tick:
+
+```mermaid
+flowchart TD
+    T([tick starts]) --> F[claim up to N tasks<br/>FOR UPDATE SKIP LOCKED]
+    F --> E{got any?}
+    E -- no --> D([tick ends<br/>wait fixedDelay])
+    E -- yes --> P[process batch]
+    P --> L{time budget<br/>left?}
+    L -- yes --> F
+    L -- no --> D
+```
+
+When the queue is empty, a tick costs one cheap indexed query. When a backlog builds up, the
+worker stops waiting between batches and runs at full speed until it catches up. The time budget
+matters: without it, a tick under a sustained backlog never ends, which makes graceful shutdown
+slow and starves any other job sharing the scheduler thread.
+
+And there usually *is* only one: Spring Boot's scheduler has **a single thread by default**. The
+poller, the stuck-task recovery job, the hourly cleanup and any flush job all queue behind each
+other, so a 20-minute cleanup run means 20 minutes without polling on that pod. Give the scheduler
+enough threads for the jobs you have, or put long jobs on their own scheduler:
+
+```yaml
+spring:
+  task:
+    scheduling:
+      pool:
+        size: 4
+```
+
+```java
+@Scheduled(fixedDelay = 1000)
+public void run() {
+    var deadline = Instant.now().plus(Duration.ofSeconds(30));
+    List<OutboxTaskEntity> batch;
+    do {
+        batch = repository.claimBatch(BATCH_SIZE, MAX_RETRY_COUNT);
+        batch.forEach(this::processClaimedTask);
+    } while (!batch.isEmpty() && Instant.now().isBefore(deadline));
+}
+```
+
+Claim the batch in one statement — select, lock and mark `PROCESSING` in a single round trip:
+
+```java
+// no @Modifying: UPDATE ... RETURNING is read back like a SELECT
+@Transactional
+@Query(nativeQuery = true, value = """
+    UPDATE outbox_tasks
+       SET state = 'PROCESSING', heartbeat_at = now(), updated_at = now()
+     WHERE id IN (
+           SELECT id FROM outbox_tasks
+            WHERE state IN ('PENDING', 'FAILED')
+              AND retry_count < :maxRetryCount
+              AND execute_at <= now()
+            ORDER BY seq
+            LIMIT :batchSize
+              FOR UPDATE SKIP LOCKED)
+    RETURNING *
+    """)
+List<OutboxTaskEntity> claimBatch(@Param("batchSize") int batchSize,
+                                  @Param("maxRetryCount") int maxRetryCount);
+```
+
+Size the batch so that one batch finishes well within the heartbeat window, and remember that
+`UPDATE ... RETURNING` does not guarantee the returned rows come back in `seq` order — sort the
+list in memory if order matters.
 
 ---
 
@@ -1015,7 +1440,7 @@ Index for the fetch query:
 
 ```sql
 CREATE INDEX idx_outbox_fetch
-    ON outbox_tasks (created_at ASC)
+    ON outbox_tasks (seq ASC)
     WHERE state IN ('PENDING', 'FAILED');
 ```
 
@@ -1060,7 +1485,10 @@ Your outbox is an operational table. Every fetch query scans it. Old rows are de
 The rule: only delete **`COMPLETED`** tasks. `FAILED` tasks are your audit trail. Leave them alone.
 Handle them manually or via a separate ops process when needed.
 
+The obvious implementation is one `DELETE` for everything older than the retention window:
+
 ```java
+// ❌ fine on day one, dangerous on the day the job was broken for a week
 @Modifying
 @Transactional
 @Query("""
@@ -1074,19 +1502,71 @@ int deleteByStateInAndUpdatedAtBefore(
 );
 ```
 
+On PostgreSQL, deleting a large number of rows in **one transaction** is expensive in ways that
+don't show up in the query time:
+
+- **WAL growth.** Every deleted row is written to the write-ahead log (often with full-page
+  images). Ten million deleted rows means gigabytes of WAL appearing in minutes: forced
+  checkpoints, disk pressure on the primary, archiving and replicas falling behind while they
+  catch up, and logical-replication consumers stuck decoding one enormous transaction.
+- **Long locks and an old snapshot.** One huge transaction holds row locks on everything it
+  touched, and keeps autovacuum from cleaning up anything newer than its snapshot — across the
+  whole database, for as long as it runs.
+- **All or nothing.** If it fails after 20 minutes, everything rolls back and the next run starts
+  from zero with an even bigger pile.
+
+Delete in **small portions, in a loop, each portion in its own short transaction**. I usually
+work with around 100k rows per transaction; tune it so one batch takes a second or two on your
+hardware. Batching doesn't make the total WAL smaller — the same rows are deleted either way — it
+spreads it out, so checkpoints, archiving and replicas keep up, locks are short, and a failure
+only loses the current batch.
+
+```java
+@Modifying
+@Transactional
+@Query(nativeQuery = true, value = """
+    DELETE FROM outbox_tasks
+     WHERE id IN (
+           SELECT id FROM outbox_tasks
+            WHERE state = 'COMPLETED'
+              AND updated_at < :before
+            LIMIT :batchSize
+              FOR UPDATE SKIP LOCKED)       -- overlapping cleanup runs split the work
+    """)
+int deleteCompletedBatch(@Param("before") Instant before, @Param("batchSize") int batchSize);
+```
+
 ```java
 private static final int CLEANUP_RETENTION_DAYS = 30;
+private static final int CLEANUP_BATCH_SIZE = 100_000;
 
-@Transactional
-public void cleanup() {
+@Scheduled(cron = "0 0 * * * *")
+public void cleanup() {                       // deliberately NOT @Transactional
     var cutoff = Instant.now().minus(CLEANUP_RETENTION_DAYS, ChronoUnit.DAYS);
-    int deleted = repository.deleteByStateInAndUpdatedAtBefore(
-            List.of(TaskState.COMPLETED), cutoff);
-    log.info("Cleanup: removed {} completed tasks older than {} days", deleted, CLEANUP_RETENTION_DAYS);
+    var deadline = Instant.now().plus(Duration.ofMinutes(40)); // never run into the next hourly run
+    int total = 0;
+    int deleted;
+    do {
+        deleted = repository.deleteCompletedBatch(cutoff, CLEANUP_BATCH_SIZE); // own transaction
+        total += deleted;
+    } while (deleted == CLEANUP_BATCH_SIZE && Instant.now().isBefore(deadline));
+    log.info("Cleanup: removed {} completed tasks older than {} days", total, CLEANUP_RETENTION_DAYS);
 }
 ```
 
-How long to retain: I've seen everything from 1 day to 3 months. If you're unsure — keep longer.
+The outer method must **not** be `@Transactional` — otherwise every batch joins one big
+transaction and you are back to a single huge delete with extra steps. The partial index
+`idx_outbox_cleanup` from Part 8 keeps each batch's inner `SELECT` cheap.
+
+An outbox is also one of the highest-churn tables you will ever own: every row is inserted,
+updated two or three times, and deleted. Each of those leaves a dead tuple behind for autovacuum.
+The defaults (vacuum when ~20% of the table is dead) are tuned for tables that mostly grow, so on
+a busy outbox they let bloat build up between runs. Make autovacuum more aggressive for this one
+table — Postgres lets you override the autovacuum settings per table with `ALTER TABLE ... SET (...)`,
+so the rest of the database keeps its defaults.
+
+How long to retain: I've seen everything from deleting a task as soon as it is processed to
+keeping it for a month afterwards. If you're unsure — keep longer.
 The cost of retaining old rows is a slightly larger table. The cost of deleting them too early
 is losing your debugging history on the day you need it most.
 
@@ -1140,10 +1620,14 @@ public class ReportGenerationHandler implements OutboxTaskHandler<ReportGenerati
 
         var reportPath = runReportGeneration(payload);
 
-        reports.save(GeneratedReport.builder()
-                .idempotencyKey(taskId)
-                .reportPath(reportPath)
-                .build());
+        try {
+            reports.saveAndFlush(GeneratedReport.builder()
+                    .idempotencyKey(taskId)
+                    .reportPath(reportPath)
+                    .build());
+        } catch (DataIntegrityViolationException e) { // saveAndFlush: surface it here, not at commit
+            log.info("Task {} was completed concurrently — treating as done", taskId);
+        }
     }
 }
 ```
@@ -1161,11 +1645,12 @@ The outbox runs silently in the background. When it works, nobody notices. When 
 nobody notices that either — at least not immediately. Stuck tasks pile up. Downstream services
 stop receiving events. By the time someone looks at logs it's been two hours.
 
-Three signals cover the failure space completely, per the Google SRE model:
+The Google SRE book's four golden signals map onto an outbox almost one to one:
 
 - **Latency** — how long does each task take from pick-up to completion? Spike here means the handler is slow or the DB is under pressure.
 - **Throughput** — how many tasks per unit time are finishing? Drops to zero means the scheduler isn't running or no tasks are being claimed.
 - **Error rate** — what fraction of attempts end in failure? Above ~5% means a downstream dependency is degraded and the retry backlog is growing.
+- **Saturation** — how much work is waiting? Queue depth, and even more useful, **the age of the oldest eligible task**: a backlog of 10,000 that is 3 seconds old is healthy, a backlog of 3 that is 40 minutes old is not.
 
 <img src="{{ site.baseurl }}/assets/img/outbox-grafana-dashboard.png" alt="Grafana outbox dashboard" style="max-width: 100%; height: auto; border-radius: 8px; border: 1px solid #e5e7eb;">
 
@@ -1224,6 +1709,12 @@ public class OutboxMetrics {
 The service then just calls `metrics.recordCompleted()` and `metrics.recordFailed()` — no raw
 strings in business logic.
 
+One trap in that gauge: `FAILED` rows that have used up their retries are never deleted (they are
+the audit trail), so counting all `FAILED` rows makes "pending" grow forever and the backlog
+alert eventually fires permanently. Count only rows that can still run (`retry_count < max`),
+and expose exhausted ones as their own `outbox.tasks.dead` gauge — that number should be zero,
+and someone should look whenever it isn't.
+
 After startup, `curl localhost:8080/actuator/prometheus | grep outbox` gives you:
 
 ```
@@ -1252,17 +1743,109 @@ The signal logic is the same; only the numbers change.
 
 ---
 
+## Part 12 — Living With It: Deploys and Payload Changes
+
+Two things will happen to every outbox in its first month in production, and neither shows up in
+a demo.
+
+### Graceful shutdown
+
+Every deploy kills pods that are in the middle of executing tasks. Without care, each of those
+tasks is left `PROCESSING` until the stuck-task recovery job notices — an hour, with the
+threshold from Part 5 — and then runs again from the start. On a team that deploys ten times a
+day, that is a steady trickle of hour-long delays and duplicate executions.
+
+The shutdown sequence you want:
+
+1. **Stop taking new work.** Stop the scheduler and the event executor from accepting tasks.
+2. **Let in-flight tasks finish**, up to a deadline that fits inside Kubernetes'
+   `terminationGracePeriodSeconds` (30s by default — raise it if your tasks need longer).
+3. **Hand back what didn't finish.** Anything still running at the deadline: flip it back to
+   `PENDING` (one `UPDATE` by id), so another pod picks it up in a second rather than in an hour.
+
+Spring Boot gives you most of this with configuration:
+
+```yaml
+# Kubernetes: terminationGracePeriodSeconds: 60
+server:
+  shutdown: graceful
+spring:
+  lifecycle:
+    timeout-per-shutdown-phase: 15s
+  task:
+    scheduling:
+      shutdown:
+        await-termination: true
+        await-termination-period: 15s
+```
+
+…plus `setWaitForTasksToCompleteOnShutdown(true)` and a 15-second await on the `outboxExecutor`
+from Part 2.5. These waits run largely one after another, not in parallel, so **add them up**:
+15 + 15 + 15 = 45 seconds has to fit inside the grace period, or the pod is killed mid-shutdown and
+leaves exactly the `PROCESSING` rows you were trying to avoid. The
+drain loop from Part 7.5 should also check a "shutting down" flag between batches, so a pod with
+a backlog stops claiming new batches as soon as it is told to stop.
+
+### Payload versioning
+
+Payloads live in the table for minutes, hours, or — for a `FAILED` task waiting on a retry — days.
+That means **the code that reads a payload is often newer than the code that wrote it**. Rename a
+field in `ReportGenerationPayload`, deploy, and every task submitted by the previous version fails
+to deserialize.
+
+Where it fails matters. With the payload mapped as a typed JSON column (`@JdbcTypeCode(SqlTypes.JSON)`
+from Part 1), Hibernate deserializes it **while loading the entity — inside the claim query**. The
+claim transaction rolls back, `retry_count` never increases, and the same poison row fails again
+on every tick. With `LIMIT 1`, or in every batch that contains it, it stalls the outbox for
+everyone. The multi-type dispatcher from Part 6 is safer: it stores the payload as raw JSON and
+deserializes it in the handler path, so a bad payload becomes an ordinary `FAILED` task.
+
+Treat the payload as a contract with your past self:
+
+- Make changes additive: add new fields as optional, and don't rename or remove a field until no
+  row with the old shape can still be `PENDING` or `FAILED`.
+- Make the reader tolerant — `@JsonIgnoreProperties(ignoreUnknown = true)` on the payload class —
+  so a rollback can still read rows written by the newer version. (Setting
+  `spring.jackson.deserialization.fail-on-unknown-properties` is not enough: Hibernate's JSON
+  mapping uses its own mapper unless you configure `hibernate.type.json_format_mapper`.)
+- For a real breaking change, add a `payload_version` column (or a new task type) and keep the old
+  handler until the old rows are gone.
+
+```sql
+ALTER TABLE outbox_tasks ADD COLUMN payload_version SMALLINT NOT NULL DEFAULT 1;
+```
+
+<div class="post-sticky" markdown="1">
+<p class="post-sticky-title">📌 From experience: Avro payloads</p>
+
+On one project our outbox payloads were Avro, and failed ones went to a dead-letter table. Storing
+them as raw bytes together with their writer schema was a decision made in a hurry, under
+pressure — but it worked, and we did replay them later. Still, I wouldn't do it again: plain JSON with additive
+changes is far simpler.
+</div>
+
+---
+
 ## Production Checklist
 
 Before shipping any outbox to production:
 
 ```
+☐ No Kafka sends, HTTP calls or other external I/O inside a DB transaction
+☐ Transaction timeout + idle_in_transaction_session_timeout set as guards
+☐ Fetch trigger chosen deliberately — fixedDelay by default; every job row-locks what it touches (SKIP LOCKED)
+☐ Batch claiming / drain loop with a time budget, not one task per tick
 ☐ Indexes are efficient — partial indexes on PENDING/FAILED and PROCESSING states
 ☐ EXPLAIN ANALYZE confirms index usage on the fetch query
 ☐ Ordering is not a problem — ORDER BY seq or created_at, backed by index
-☐ Processed data cleanup job running, COMPLETED rows removed after retention period
+☐ Event listeners are AFTER_COMMIT and @Async on a dedicated, bounded executor
+☐ Exponential backoff with jitter wired — or confirmed not needed for this use case
+☐ Bulk submissions spread with a jittered execute_at
+☐ Cleanup deletes COMPLETED rows in batches, each in its own transaction
+☐ Autovacuum tuned for the outbox table
 ☐ Idempotency handled inside handlers with side effects
-☐ Exponential backoff wired — or confirmed not needed for this use case
+☐ Graceful shutdown hands unfinished tasks back instead of leaving them PROCESSING
+☐ Payload changes are backward compatible (or versioned)
 ☐ Metrics in place — queue depth, throughput, error rate, latency
 ☐ Alerts configured — backlog, error rate, latency, stuck tasks
 ```
@@ -1292,10 +1875,34 @@ in the source code.
 
 ---
 
+**[JobRunr](https://www.jobrunr.io/)** — background jobs for Java, with very little ceremony:
+you enqueue a lambda (`BackgroundJob.enqueue(() -> reportService.generate(from, to))`), and
+JobRunr serializes the call, stores it in your database, and runs it on any instance with retries
+and backoff, recurring (cron) jobs, and a web dashboard out of the box. It sits in the same
+category as db-scheduler, with a friendlier API and more built-in tooling; some features (job
+batches, priority queues, rate limiting) are in the paid Pro edition. One thing to check before
+using it as an *outbox*: the guarantee this article is built on is that the job is saved in the
+**same transaction** as your business change. Verify how your JobRunr version and storage
+provider behave inside your `@Transactional` method before you rely on it for that.
+
+---
+
 **[Celery](https://docs.celeryq.dev/)** — the de-facto standard for async task execution in
 the Python ecosystem. Celery supports PostgreSQL as a result backend and Redis or RabbitMQ as a
 broker. The `AFTER_COMMIT` pattern from Part 2.5 applies here too — push to Celery only after
 the transaction commits, not inside it.
+
+---
+
+**[Debezium](https://debezium.io/documentation/reference/stable/transformations/outbox-event-router.html)**
+— a different answer to the same problem, worth knowing when the outbox exists only to publish
+events to Kafka. Instead of a worker polling the table, Debezium reads the database's
+write-ahead log (change data capture) and publishes each inserted outbox row to Kafka; its outbox
+event router turns the row into a properly keyed message. There is no polling latency and no
+polling load on the table. The price is operating Kafka Connect and a replication slot — and a
+slot that stops being consumed makes Postgres keep WAL forever, so it needs monitoring of its
+own. It also only covers "publish an event": for "generate a report" or "call this API with
+retries", you still want the task-execution engine this article builds.
 
 ---
 
@@ -1304,6 +1911,18 @@ library with JDBC-backed job persistence. More general than an outbox, with cron
 triggers, and job stores. The operational overhead is higher than db-scheduler and the API is
 verbose by modern standards, but it's proven at scale with first-class Spring integration via
 `spring-boot-starter-quartz`.
+
+---
+
+**[Spring Batch](https://spring.io/projects/spring-batch)** — often mentioned in the same breath,
+but it solves a different problem. Everything above (db-scheduler, JobRunr, Quartz, this article's
+outbox) runs **many small, independent tasks**: one email, one webhook, one report request.
+Spring Batch runs **one large job over a big dataset**: read millions of rows, process them in
+chunks, write the results, commit after each chunk, and — if it fails at row 3,200,000 — restart
+from the last committed chunk instead of from zero. Its job repository records every run and step
+for exactly that purpose. It doesn't queue work or react to events; something has to start the
+job. The two combine well: in our scenario, the outbox task can be "start the monthly report job",
+and the job itself can be a Spring Batch job.
 
 ---
 

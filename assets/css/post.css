@@ -322,3 +322,34 @@ footer {
 .faq-answer { margin-top: 0.6rem; }
 .faq-answer > :first-child { margin-top: 0; }
 .faq-answer > :last-child { margin-bottom: 0; }
+
+/* Hand-written note aside: personal war stories next to the main text.
+   Same mint fill, green stroke and Kalam font as the hand-drawn diagrams. */
+.post-sticky {
+    max-width: 36rem;
+    margin: 2rem auto 2.25rem;
+    padding: 1.25rem 1.5rem 1.1rem;
+    background: var(--color-surface-muted, #e6f7f2);
+    color: #1a1a1a;
+    border: 2px solid var(--color-primary, #1D9E75);
+    border-radius: 255px 18px 225px 18px / 18px 225px 18px 255px; /* uneven, hand-drawn edge */
+    font-family: "Kalam", "Comic Sans MS", cursive;
+    font-size: 1.05rem;
+    line-height: 1.55;
+}
+.post-sticky p { margin: 0 0 0.6rem; }
+.post-sticky p:last-child { margin-bottom: 0; }
+.post-sticky .post-sticky-title {
+    color: var(--color-primary-dark, #0F6E56);
+    font-weight: 700;
+    font-size: 1.15rem;
+    margin-bottom: 0.4rem;
+}
+.post-sticky strong { color: var(--color-primary-dark, #0F6E56); }
+.post-sticky code {
+    background: #ffffff;
+    color: var(--color-primary-dark, #0F6E56);
+}
+@media (max-width: 480px) {
+    .post-sticky { margin: 1.75rem 0; padding: 1rem 1.1rem; }
+}

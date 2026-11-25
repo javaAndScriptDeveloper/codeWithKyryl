@@ -1,120 +1,127 @@
-.highlight table td { padding: 5px; }
-.highlight table pre { margin: 0; }
-.highlight, .highlight .w {
-  color: #c9d1d9;
-  background-color: #161b22;
-}
-.highlight .k, .highlight .kd, .highlight .kn, .highlight .kp, .highlight .kr, .highlight .kt, .highlight .kv {
-  color: #ff7b72;
-}
-.highlight .gr {
-  color: #f0f6fc;
-}
-.highlight .gd {
-  color: #ffdcd7;
-  background-color: #67060c;
-}
-.highlight .nb {
-  color: #ffa657;
-}
-.highlight .nc {
-  color: #ffa657;
-}
-.highlight .no {
-  color: #ffa657;
-}
-.highlight .nn {
-  color: #ffa657;
-}
-.highlight .sr {
-  color: #7ee787;
-}
-.highlight .na {
-  color: #7ee787;
-}
-.highlight .nt {
-  color: #7ee787;
-}
-.highlight .gi {
-  color: #aff5b4;
-  background-color: #033a16;
-}
-.highlight .ges {
-  font-weight: bold;
-  font-style: italic;
-}
-.highlight .kc {
-  color: #79c0ff;
-}
-.highlight .l, .highlight .ld, .highlight .m, .highlight .mb, .highlight .mf, .highlight .mh, .highlight .mi, .highlight .il, .highlight .mo, .highlight .mx {
-  color: #79c0ff;
-}
-.highlight .sb {
-  color: #79c0ff;
-}
-.highlight .bp {
-  color: #79c0ff;
-}
-.highlight .ne {
-  color: #79c0ff;
-}
-.highlight .nl {
-  color: #79c0ff;
-}
-.highlight .py {
-  color: #79c0ff;
-}
-.highlight .nv, .highlight .vc, .highlight .vg, .highlight .vi, .highlight .vm {
-  color: #79c0ff;
-}
-.highlight .o, .highlight .ow {
-  color: #79c0ff;
-}
-.highlight .gh {
-  color: #1f6feb;
-  font-weight: bold;
-}
-.highlight .gu {
-  color: #1f6feb;
-  font-weight: bold;
-}
-.highlight .s, .highlight .sa, .highlight .sc, .highlight .dl, .highlight .sd, .highlight .s2, .highlight .se, .highlight .sh, .highlight .sx, .highlight .s1, .highlight .ss {
-  color: #a5d6ff;
-}
-.highlight .nd {
-  color: #d2a8ff;
-}
-.highlight .nf, .highlight .fm {
-  color: #d2a8ff;
-}
-.highlight .err {
-  color: #f0f6fc;
-  background-color: #8e1519;
-}
-.highlight .c, .highlight .ch, .highlight .cd, .highlight .cm, .highlight .cp, .highlight .cpf, .highlight .c1, .highlight .cs {
-  color: #8b949e;
-}
-.highlight .gl {
-  color: #8b949e;
-}
-.highlight .gt {
-  color: #8b949e;
-}
-.highlight .ni {
-  color: #c9d1d9;
-}
-.highlight .si {
-  color: #c9d1d9;
-}
-.highlight .ge {
-  color: #c9d1d9;
-  font-style: italic;
-}
-.highlight .gs {
-  color: #c9d1d9;
-  font-weight: bold;
-}
+/*
+ * Rouge token colours — Catppuccin Mocha, matching --color-code-bg (#1e1e2e).
+ * Scoped under .post-content so minima's light syntax rules (main.css) cannot win
+ * by load order. One role per colour: keywords, types, calls, annotations, strings,
+ * constants, comments — so a Spring/JPA snippet reads at a glance.
+ */
+.post-content .highlight table td { padding: 5px; }
+.post-content .highlight table pre { margin: 0; }
 
-/* Site overrides */
-pre.highlight { background: #1e1e2e !important; border-left: 3px solid #1D9E75; }
-pre.highlight, pre.highlight code { color: #cdd6f4; }
+.post-content .highlight,
+.post-content pre.highlight,
+.post-content pre.highlight code,
+.post-content .highlight .w,
+.post-content .highlight .n,
+.post-content .highlight .nx,
+.post-content .highlight .ni,
+.post-content .highlight .si,
+.post-content .highlight .nv,
+.post-content .highlight .vc,
+.post-content .highlight .vg,
+.post-content .highlight .vi,
+.post-content .highlight .vm { color: #cdd6f4; }
+
+/* keywords: public, class, if, return, SELECT, WHERE */
+.post-content .highlight .k,
+.post-content .highlight .kd,
+.post-content .highlight .kn,
+.post-content .highlight .kp,
+.post-content .highlight .kr,
+.post-content .highlight .kv,
+.post-content .highlight .ow { color: #cba6f7; }
+
+/* types: String, UUID, ReportGenerationEntity, void, INTEGER */
+.post-content .highlight .kt,
+.post-content .highlight .nc,
+.post-content .highlight .nn,
+.post-content .highlight .nb,
+.post-content .highlight .bp,
+.post-content .highlight .ne { color: #f9e2af; }
+
+/* method declarations and calls */
+.post-content .highlight .nf,
+.post-content .highlight .fm,
+.post-content .highlight .na,
+.post-content .highlight .py { color: #89b4fa; }
+
+/* annotations: @Transactional, @Scheduled */
+.post-content .highlight .nd { color: #94e2d5; }
+
+/* labels / YAML keys / HTML tags */
+.post-content .highlight .nl,
+.post-content .highlight .nt { color: #89dceb; }
+
+/* constants, enum values, numbers, true/false/null */
+.post-content .highlight .no,
+.post-content .highlight .kc,
+.post-content .highlight .l,
+.post-content .highlight .ld,
+.post-content .highlight .m,
+.post-content .highlight .mb,
+.post-content .highlight .mf,
+.post-content .highlight .mh,
+.post-content .highlight .mi,
+.post-content .highlight .il,
+.post-content .highlight .mo,
+.post-content .highlight .mx { color: #fab387; }
+
+/* strings */
+.post-content .highlight .s,
+.post-content .highlight .sa,
+.post-content .highlight .sb,
+.post-content .highlight .sc,
+.post-content .highlight .dl,
+.post-content .highlight .sd,
+.post-content .highlight .s1,
+.post-content .highlight .s2,
+.post-content .highlight .se,
+.post-content .highlight .sh,
+.post-content .highlight .sx,
+.post-content .highlight .ss,
+.post-content .highlight .sr { color: #a6e3a1; }
+
+/* operators and punctuation recede */
+.post-content .highlight .o { color: #89dceb; }
+.post-content .highlight .p { color: #9399b2; }
+
+/* comments: muted, italic */
+.post-content .highlight .c,
+.post-content .highlight .ch,
+.post-content .highlight .cd,
+.post-content .highlight .cm,
+.post-content .highlight .cp,
+.post-content .highlight .cpf,
+.post-content .highlight .c1,
+.post-content .highlight .cs { color: #7f849c; font-style: italic; }
+
+/* diffs and generic */
+.post-content .highlight .gd { color: #f38ba8; background-color: rgba(243, 139, 168, 0.12); }
+.post-content .highlight .gi { color: #a6e3a1; background-color: rgba(166, 227, 161, 0.12); }
+.post-content .highlight .gh,
+.post-content .highlight .gu { color: #89b4fa; font-weight: 600; }
+.post-content .highlight .ge,
+.post-content .highlight .ges { font-style: italic; }
+.post-content .highlight .gs { font-weight: 600; }
+.post-content .highlight .gr,
+.post-content .highlight .gt,
+.post-content .highlight .gl { color: #9399b2; }
+.post-content .highlight .err { color: #f38ba8; background: transparent; }
+
+/* language tag in the top-left corner of each block */
+.post-content div.highlighter-rouge { position: relative; }
+.post-content div.highlighter-rouge .code-lang {
+  position: absolute;
+  top: 0;
+  left: 3px;
+  padding: 2px 10px;
+  border-radius: 0 0 6px 0;
+  background: rgba(205, 214, 244, 0.08);
+  color: #a6adc8;
+  font-family: var(--font-code);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+.post-content div.highlighter-rouge.has-lang pre.highlight { padding-top: 2rem; }

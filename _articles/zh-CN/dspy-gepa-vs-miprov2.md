@@ -1,5 +1,7 @@
 ---
 layout: post
+published: false
+sitemap: false
 lang: zh-CN
 lang_key: dspy-gepa-vs-miprov2
 permalink: /zh-CN/2026/11/14/dspy-gepa-vs-miprov2/

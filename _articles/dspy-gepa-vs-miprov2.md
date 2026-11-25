@@ -1,5 +1,7 @@
 ---
 layout: post
+published: false
+sitemap: false
 lang_key: dspy-gepa-vs-miprov2
 title: "DSPy, Explained for Backend Engineers: Signatures, Optimizers, and GEPA vs MIPROv2"
 date: 2026-11-14

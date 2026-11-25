@@ -20,12 +20,18 @@ css:
     </div>
     <div class="post-content">
         {{ content }}
-        <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+        <link href="https://fonts.googleapis.com/css2?family=Kalam:wght@400;700&display=swap" rel="stylesheet">
+        <script src="https://cdn.jsdelivr.net/npm/mermaid@11.17.2/dist/mermaid.min.js"></script>
         <script>
           mermaid.initialize({
-            startOnLoad: true,
+            startOnLoad: false,
             theme: 'base',
+            look: 'handDrawn',
+            handDrawnSeed: 7,
+            fontFamily: '"Kalam", "Comic Sans MS", cursive',
             themeVariables: {
+              fontFamily: '"Kalam", "Comic Sans MS", cursive',
+              fontSize: '17px',
               primaryColor: '#e6f7f2',
               primaryTextColor: '#1a1a1a',
               primaryBorderColor: '#1D9E75',
@@ -56,7 +62,12 @@ css:
             div.textContent = el.textContent;
             el.parentNode.replaceWith(div);
           });
+          // Kalam must be loaded before Mermaid measures labels, or boxes are sized for the fallback font.
+          var fontReady = document.fonts && document.fonts.load ? document.fonts.load('17px "Kalam"') : Promise.resolve();
+          fontReady.catch(function () {}).then(function () { mermaid.run(); });
         </script>
+        <script src="{{ '/assets/js/code-label.js' | relative_url }}"></script>
+        <script>CodeLabel.mount(document);</script>
         {% include faq.html %}
     </div>
 </div>
