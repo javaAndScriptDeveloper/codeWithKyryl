@@ -322,3 +322,44 @@ footer {
 .faq-answer { margin-top: 0.6rem; }
 .faq-answer > :first-child { margin-top: 0; }
 .faq-answer > :last-child { margin-bottom: 0; }
+
+/* Hand-written "sticky note" aside: personal war stories next to the main text. */
+.post-sticky {
+    position: relative;
+    max-width: 34rem;
+    margin: 2rem auto 2.25rem;
+    padding: 1.6rem 1.5rem 1.2rem;
+    background: #fff6a8;
+    color: #3b3a2e;
+    font-family: "Kalam", "Comic Sans MS", cursive;
+    font-size: 1.05rem;
+    line-height: 1.55;
+    transform: rotate(-1.2deg);
+    box-shadow: 0 1px 1px rgba(0, 0, 0, 0.08), 0 10px 18px -8px rgba(0, 0, 0, 0.28);
+    border-radius: 2px 2px 14px 2px;
+}
+.post-sticky::before {               /* strip of tape */
+    content: "";
+    position: absolute;
+    top: -12px;
+    left: 50%;
+    width: 96px;
+    height: 24px;
+    transform: translateX(-50%) rotate(2deg);
+    background: rgba(255, 255, 255, 0.55);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+.post-sticky p { margin: 0 0 0.6rem; }
+.post-sticky p:last-child { margin-bottom: 0; }
+.post-sticky .post-sticky-title {
+    font-weight: 700;
+    font-size: 1.15rem;
+    margin-bottom: 0.4rem;
+}
+.post-sticky code {
+    background: rgba(0, 0, 0, 0.06);
+    color: inherit;
+}
+@media (max-width: 480px) {
+    .post-sticky { transform: none; margin: 1.75rem 0; }
+}

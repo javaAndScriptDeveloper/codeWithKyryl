@@ -1815,6 +1815,19 @@ Treat the payload as a contract with your past self:
 ALTER TABLE outbox_tasks ADD COLUMN payload_version SMALLINT NOT NULL DEFAULT 1;
 ```
 
+<div class="post-sticky" markdown="1">
+<p class="post-sticky-title">📌 From experience: Avro payloads</p>
+
+On one project the outbox payloads were Avro. Messages that couldn't be processed went to a
+dead-letter table, so we could fix the cause and replay them later. To make sure we could still
+read them after the schema moved on, I was pushed to store each one as raw bytes **together with
+the schema it was written with**, and decode it from that schema when recovering.
+
+It worked. But it is a clumsy way to version an outbox: you can't read a payload with a plain
+`SELECT`, every row carries its schema, and debugging needs extra tooling. JSON plus additive
+changes (and a `payload_version` when you really need it) is far simpler.
+</div>
+
 ---
 
 ## Production Checklist
