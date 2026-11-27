@@ -9,3 +9,9 @@
 [build.environment]
   RUBY_VERSION = "3.2.0"
   JEKYLL_ENV = "production"
+
+# English tutorials used to be built as /tutorials.html; Google indexed that URL.
+[[redirects]]
+  from = "/tutorials.html"
+  to = "/tutorials/"
+  status = 301

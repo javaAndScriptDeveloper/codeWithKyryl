@@ -110,7 +110,7 @@ css:
         </div>
         {% if _limited_posts.size > 0 %}
         <div class="section-cta">
-            <a href="{{ '/tutorials' | relative_url }}" class="view-all-link">
+            <a href="{{ '/tutorials/' | relative_url }}" class="view-all-link">
                 {{ _t.home.view_all_articles | default: "View all articles" }} <i class="fas fa-arrow-right"></i>
             </a>
             {% if _lang == "en" %}

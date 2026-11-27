@@ -38,3 +38,21 @@ test('posts load a pinned Mermaid with the hand-drawn look', () => {
     assert.match(html, /look:\s*'handDrawn'/);
     assert.match(html, /fonts\.googleapis\.com\/css2\?family=Kalam/);
 });
+
+// Google Search Console flagged "Alternate page with proper canonical tag": English tutorials
+// was built as /tutorials.html while the nav links /tutorials, so Netlify served both URLs
+// with a canonical pointing at the .html one. Every page must sit at a trailing-slash URL.
+test('English tutorials page lives at /tutorials/, like every other page', () => {
+    assert.equal(fs.existsSync(path.join(SITE, 'tutorials', 'index.html')), true);
+    assert.equal(fs.existsSync(path.join(SITE, 'tutorials.html')), false);
+    const html = fs.readFileSync(path.join(SITE, 'tutorials', 'index.html'), 'utf8');
+    assert.match(html, /<link rel="canonical" href="https:\/\/codewithkyryl\.dev\/tutorials\/"/);
+});
+
+test('no canonical or hreflang URL ends in .html', () => {
+    const bad = walk(SITE)
+        .filter((f) => f.endsWith('.html') && f !== path.join(SITE, '404.html') && !f.includes(`${path.sep}assets${path.sep}`))
+        .filter((f) => /<link rel="(canonical|alternate)"[^>]*href="[^"]*\.html"/.test(fs.readFileSync(f, 'utf8')))
+        .map((f) => path.relative(SITE, f));
+    assert.deepEqual(bad, []);
+});
