@@ -2,8 +2,9 @@
 layout: post
 lang: en
 lang_key: self-hosting-open-webui
-published: true
-sitemap: true
+published: false
+sitemap: false
+shadow: true
 permalink: /2026/11/15/self-hosting-open-webui/
 title: "Self-Hosting Open WebUI for a Backend Team: What the Docs Bury"
 date: 2026-11-15

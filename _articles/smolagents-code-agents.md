@@ -2,8 +2,9 @@
 layout: post
 lang: en
 lang_key: smolagents-code-agents
-published: true
-sitemap: true
+published: false
+sitemap: false
+shadow: true
 permalink: /2026/11/15/smolagents-code-agents/
 title: "smolagents: Agents That Write Python Instead of JSON"
 date: 2026-11-15
