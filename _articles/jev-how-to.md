@@ -202,7 +202,7 @@ Create a key in the TypeSafe console, export it in your shell as the environment
 
 ## Trade-offs
 
-It is a hosted, paid API. Every ticket you judge leaves your network and goes to TypeSafe, which may rule it out for regulated data before any engineering discussion starts. You also need a key and a budget, and this post has no price numbers because the pages it is based on give none.
+It is a hosted, paid API. Every ticket you judge leaves your network and goes to TypeSafe, which may rule it out for regulated data before any engineering discussion starts. You also need a key and a budget. Pricing is input-only: $0.042 per million tokens, output is free. The [model pricing page](https://typesafe.ai/pricing) has the current numbers.
 
 There is no Java SDK. You own the retry policy, timeouts and the typed model of the response. The code is small, but it is code you maintain when the API adds a field.
 
