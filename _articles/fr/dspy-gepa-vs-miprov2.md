@@ -1,7 +1,7 @@
 ---
 layout: post
-published: false
-sitemap: false
+published: true
+sitemap: true
 lang: fr
 lang_key: dspy-gepa-vs-miprov2
 permalink: /fr/2026/11/14/dspy-gepa-vs-miprov2/

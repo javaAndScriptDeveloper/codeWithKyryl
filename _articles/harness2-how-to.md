@@ -1,7 +1,7 @@
 ---
 layout: post
-published: false
-sitemap: false
+published: true
+sitemap: true
 title: "How to use Harness² in Python: a recursive agent harnessing demo"
 date: 2026-10-22
 tags: [harness2, python, tutorial]
